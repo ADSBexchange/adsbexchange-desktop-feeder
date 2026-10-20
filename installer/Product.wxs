@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The ADS-B Exchange Feeder installer (WiX 3), built by :app:buildMsi from Compose's app folder
+  (createDistributable). Replaces Compose's own MSI, which can't be branded or open the app at the end.
+
+  Per machine (since 0.5.16): one administrator prompt at install, and the app goes to
+  C:\Program Files\ADS-B Exchange Feeder, where only administrators can write. That matters for the
+  driver helper, which runs elevated and stages libwdi's files beside itself
+  (rtlsdr_driver.c). Each Windows user keeps their own data folder
+  (%LOCALAPPDATA%\ADS-B Exchange Feeder), which uninstalling leaves alone, and their own
+  start-with-Windows entry: the installer sets the installing user's, and the app keeps every
+  user's in step with Settings (Autostart.kt).
+
+  Earlier versions (up to 0.5.15) installed per user. Windows can't upgrade a per-user install to a
+  per-machine one, so an old one has to be uninstalled first; the launch condition below says so.
+
+  Variables from the build: Version, AppDir (the app folder), Art (installer/art), LicenseRtf, IconFile.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <!-- Same upgrade code as every earlier MSI. Never change it. -->
+  <Product Id="*" Name="ADS-B Exchange Feeder" Language="1033" Version="$(var.Version)"
+           Manufacturer="ADS-B Exchange" UpgradeCode="5e7a0f43-2c71-4d0e-9b6a-ad5bde5c0001">
+
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine"
+             Manufacturer="ADS-B Exchange" Description="ADS-B Exchange Feeder $(var.Version)"
+             Comments="Feeds ADS-B Exchange from an RTL-SDR stick" />
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- An old per-user install (0.5.15 or earlier) for this account: its marker under HKCU. -->
+    <Property Id="OLDPERUSERINSTALL">
+      <RegistrySearch Id="FindOldPerUserInstall" Root="HKCU" Key="Software\ADS-B Exchange\Feeder"
+                      Name="InstallDir" Type="raw" />
+    </Property>
+    <Condition Message="An earlier version of ADS-B Exchange Feeder is installed for your account only. Please uninstall it first (Settings, Apps, ADS-B Exchange Feeder), then run this installer again. Your settings and history are kept.">
+      Installed OR NOT OLDPERUSERINSTALL
+    </Condition>
+
+    <!-- Add/Remove Programs -->
+    <Icon Id="AppIcon" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://www.adsbexchange.com/" />
+
+    <!-- The app holds its files open, and readsb runs from them: close both before replacing or
+         removing anything. The app only hides its window on WM_CLOSE, so terminate it. -->
+    <util:CloseApplication Id="CloseFeeder" Target="ADS-B Exchange Feeder.exe" CloseMessage="no"
+                           TerminateProcess="0" RebootPrompt="no" />
+    <util:CloseApplication Id="CloseReadsb" Target="readsb.exe" CloseMessage="no"
+                           TerminateProcess="0" RebootPrompt="no" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="ADS-B Exchange Feeder">
+          <!-- The same folder heat harvests (app\resources); named here for the clean-up below. -->
+          <Directory Id="AppSubfolder" Name="app">
+            <Directory Id="ResourcesFolder" Name="resources" />
+          </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ProgramMenuDir" Name="ADS-B Exchange" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
+    </Directory>
+
+    <!-- Lets uninstall remove the (by then empty) install folder. -->
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="InstallDirCleanup" Guid="3b1f2c5e-6a0d-4b7e-9c41-ad5bde5c0012">
+        <RegistryValue Root="HKLM" Key="Software\ADS-B Exchange\Feeder" Name="InstallDir"
+                       Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallDir" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- What the driver helper leaves beside itself: its log (its staging folder it deletes itself). -->
+    <DirectoryRef Id="ResourcesFolder">
+      <Component Id="DriverHelperCleanup" Guid="3b1f2c5e-6a0d-4b7e-9c41-ad5bde5c0016">
+        <RegistryValue Root="HKLM" Key="Software\ADS-B Exchange\Feeder" Name="DriverHelperCleanup"
+                       Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFile Id="RemoveDriverLog" Name="driver-install.log" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- Plain (not advertised) shortcuts, for every user. -->
+    <DirectoryRef Id="ProgramMenuDir">
+      <Component Id="StartMenuShortcut" Guid="3b1f2c5e-6a0d-4b7e-9c41-ad5bde5c0013">
+        <Shortcut Id="StartMenuLauncher" Name="ADS-B Exchange Feeder" Description="Feed ADS-B Exchange from an RTL-SDR stick"
+                  Target="[INSTALLDIR]ADS-B Exchange Feeder.exe" WorkingDirectory="INSTALLDIR" Icon="AppIcon" />
+        <RemoveFolder Id="RemoveProgramMenuDir" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\ADS-B Exchange\Feeder" Name="StartMenuShortcut"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="3b1f2c5e-6a0d-4b7e-9c41-ad5bde5c0014">
+        <Shortcut Id="DesktopLauncher" Name="ADS-B Exchange Feeder" Description="Feed ADS-B Exchange from an RTL-SDR stick"
+                  Target="[INSTALLDIR]ADS-B Exchange Feeder.exe" WorkingDirectory="INSTALLDIR" Icon="AppIcon" />
+        <RegistryValue Root="HKLM" Key="Software\ADS-B Exchange\Feeder" Name="DesktopShortcut"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- Start with Windows, in the tray, for the user who installs it (removed again when they
+         uninstall). Other users get theirs from the app on its first start (Autostart.kt). -->
+    <DirectoryRef Id="TARGETDIR">
+      <Component Id="StartWithWindows" Guid="3b1f2c5e-6a0d-4b7e-9c41-ad5bde5c0015">
+        <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="ADS-B Exchange Feeder"
+                       Type="string" Value="&quot;[INSTALLDIR]ADS-B Exchange Feeder.exe&quot; --background" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Main" Title="ADS-B Exchange Feeder" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="InstallDirCleanup" />
+      <ComponentRef Id="DriverHelperCleanup" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <ComponentRef Id="StartWithWindows" />
+    </Feature>
+
+    <!-- Branded standard UI: welcome + licence, progress, finish with "Open ADS-B Exchange Feeder". -->
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.Art)\dialog.bmp" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.Art)\banner.bmp" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open ADS-B Exchange Feeder" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <!-- Set once costing has resolved INSTALLDIR (a plain Property can't refer to another). -->
+    <SetProperty Id="WixShellExecTarget" Value="[INSTALLDIR]ADS-B Exchange Feeder.exe" After="CostFinalize" Sequence="ui" />
+    <!-- From the UI sequence, which runs as the user, not elevated: the app must never run as administrator. -->
+    <CustomAction Id="OpenFeeder" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes" />
+
+    <UI>
+      <UIRef Id="WixUI_Minimal" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenFeeder">
+        WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed
+      </Publish>
+    </UI>
+  </Product>
+</Wix>

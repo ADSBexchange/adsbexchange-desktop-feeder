@@ -1,0 +1,48 @@
+Turns on WinUSB's RAW_IO for librtlsdr's sample stream, on Windows only.
+Applied with "git apply" by native/CMakeLists.txt; git apply ignores this header.
+
+Why: on a Windows PC, ADS-B Exchange's MLAT server flagged clock jumps on most of the desktop
+feeder's peer pairs (sync table, 7 October 2026), and gave it the maximum bad-sync score, so it
+isn't used for positions. The official mlat-client on the same readsb did the same, so the jumps
+come from the sample stream, not the MLAT client. The timing precision itself was fine (median
+error 0.1 us, as good as a Raspberry Pi feeder at the same site).
+
+The suspected cause: without RAW_IO, WinUSB passes queued reads to the USB stack one at a time, and
+in the gap between two reads the RTL2832U's small FIFO can overflow. That loses fewer samples than
+readsb's own check notices (it watches for whole 128 KB transfers), but every loss shifts the
+sample clock, which is what MLAT measures. RAW_IO keeps all the transfers queued with the host
+controller, as Linux's USB stack does. libusb 1.0.30 supports it, but only on request.
+
+The transfers already meet RAW_IO's rules (a multiple of the 512-byte packet size, and no larger
+than the pipe's limit, which is checked). readsb's log says whether it took effect.
+
+diff --git a/src/librtlsdr.c b/src/librtlsdr.c
+index 82bab6d..1b804de 100644
+--- a/src/librtlsdr.c
++++ b/src/librtlsdr.c
+@@ -1960,6 +1960,25 @@ int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
+ 
+ 	_rtlsdr_alloc_async_buffers(dev);
+ 
++#ifdef _WIN32
++	/* On Windows, WinUSB hands queued reads to the USB stack one at a time unless RAW_IO is on.
++	 * In the gap between two reads the RTL2832U's small FIFO can overflow: too few samples lost
++	 * for readsb to notice, but each loss is a jump in the sample clock, which MLAT can't use.
++	 * RAW_IO keeps every transfer queued with the host controller, as Linux does. It needs each
++	 * transfer to be a multiple of the packet size (512, checked above) and no larger than the
++	 * pipe's RAW_IO maximum. (ADS-B Exchange Desktop Feeder, native/patches/rtlsdr-winusb-raw-io.patch.) */
++	if (libusb_endpoint_supports_raw_io(dev->devh, 0x81) == 1) {
++		int max = libusb_get_max_raw_io_transfer_size(dev->devh, 0x81);
++		if (max > 0 && dev->xfer_buf_len <= (uint32_t)max && libusb_endpoint_set_raw_io(dev->devh, 0x81, 1) == 0)
++			fprintf(stderr, "WinUSB RAW_IO on for the sample stream (%u-byte transfers, limit %d)\n",
++				dev->xfer_buf_len, max);
++		else
++			fprintf(stderr, "WinUSB RAW_IO not enabled (%u-byte transfers, limit %d)\n", dev->xfer_buf_len, max);
++	} else {
++		fprintf(stderr, "WinUSB RAW_IO not supported for the sample stream\n");
++	}
++#endif
++
+ 	for(i = 0; i < dev->xfer_buf_num; ++i) {
+ 		libusb_fill_bulk_transfer(dev->xfer[i],
+ 					  dev->devh,

@@ -1,0 +1,22 @@
+[versions]
+# Minimum release age: each was released at least a week before it was adopted.
+kotlin = "2.4.21"            # 2026-10-08
+composeMultiplatform = "1.12.1" # 2026-09-22
+composeMaterial3 = "1.9.0"   # what Compose Multiplatform 1.12.1 pairs with
+jna = "5.19.1"               # 2026-06-12
+orgJson = "20260814"         # 2026-08-14, as the phone app's tests
+junit = "4.13.2"
+
+[libraries]
+compose-desktop-windows-x64 = { group = "org.jetbrains.compose.desktop", name = "desktop-jvm-windows-x64", version.ref = "composeMultiplatform" }
+compose-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "composeMaterial3" }
+compose-resources = { group = "org.jetbrains.compose.components", name = "components-resources", version.ref = "composeMultiplatform" }
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
+jna-platform = { group = "net.java.dev.jna", name = "jna-platform", version.ref = "jna" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

@@ -1,0 +1,104 @@
+Changes to readsb for the desktop app, that can't be made from native/compat (force-included shims).
+Applied with "git apply" by native/CMakeLists.txt; git apply ignores this header.
+
+1. readsb.c, configureSignals(): Windows has no sigaction/sigprocmask. Handle SIGINT/SIGTERM
+   and shut down cleanly when the desktop app closes stdin (win_watch_stdin).
+2. aircraft.c: Windows' struct stat has st_mtime but no st_mtim.
+3. sdr.c: "current_handler()->close()" is parenthesised so the close() macro in
+   win_compat.h doesn't rewrite the struct member call.
+4. readsb.c, configAfterParse(): not a Windows change. readsb turned off its range outline, and
+   with it stats.json's max_distance, when no position was given on the command line. The app
+   only gives the position over gpsd, after startup, so "Max range" and "Furthest aircraft" were
+   always 0. Now only a missing JSON folder or --json-location-accuracy 0 turns the outline off.
+5. sdr_rtlsdr.c, rtlsdrClose(): not a Windows change. With --enable-biastee, the bias tee stayed
+   on after readsb stopped (librtlsdr's close leaves the GPIO as it is), powering the antenna
+   cable until the stick was unplugged. It's turned off before closing now.
+
+To regenerate after editing a patched copy of readsb: git diff > native/patches/readsb-windows.patch
+(then re-add this header).
+
+diff --git a/aircraft.c b/aircraft.c
+index 3a20ced..b8b3c46 100644
+--- a/aircraft.c
++++ b/aircraft.c
+@@ -619,7 +619,11 @@ int dbUpdate(int64_t now) {
+         fprintf(stderr, "%s: dbUpdate: fstat failed, wat?!\n", filename);
+         goto DBU0;
+     }
++#ifdef _WIN32
++    int64_t modTime = fileinfo.st_mtime;
++#else
+     int64_t modTime = fileinfo.st_mtim.tv_sec;
++#endif
+ 
+     if (Modes.dbModificationTime == modTime)
+         goto DBU0;
+diff --git a/readsb.c b/readsb.c
+index 393af05..0676724 100644
+--- a/readsb.c
++++ b/readsb.c
+@@ -2657,7 +2657,9 @@ static void configAfterParse() {
+ 
+         adjustUserLocationAccuracy(VERBOSE);
+     }
+-    if (!Modes.userLocationValid || !Modes.json_dir || Modes.json_location_accuracy == 0) {
++    // The feeder apps give readsb the position over gpsd only (never --lat/--lon), so it isn't
++    // known yet here. Keep the range outline (and with it stats.json's max_distance) for then.
++    if (!Modes.json_dir || Modes.json_location_accuracy == 0) {
+         Modes.outline_json = 0; // disable outline_json
+     }
+     if (Modes.json_reliable == -13) {
+@@ -3045,6 +3047,15 @@ static void *miscEntryPoint(void *arg) {
+ 
+     pthread_exit(NULL);
+ }
++#ifdef _WIN32
++static void configureSignals() {
++    // Windows has no sigaction or signal masks. Ctrl+C arrives as SIGINT; the desktop app asks
++    // for a clean exit by closing readsb's stdin (see win_watch_stdin in win_compat.c).
++    signal(SIGINT, exitHandler);
++    signal(SIGTERM, exitHandler);
++    win_watch_stdin(exitHandler);
++}
++#else
+ static void _sigaction_range(struct sigaction *sa, int first, int last) {
+     int sig;
+     for (sig = first; sig <= last; ++sig) {
+@@ -3079,6 +3090,7 @@ static void configureSignals() {
+     sigemptyset(&mask);
+     sigprocmask(SIG_SETMASK, &mask, NULL);
+ }
++#endif
+ 
+ //
+ //=========================================================================
+diff --git a/sdr.c b/sdr.c
+index 40499d6..c70bff4 100644
+--- a/sdr.c
++++ b/sdr.c
+@@ -206,7 +206,7 @@ void sdrClose() {
+     pthread_mutex_lock(&Modes.sdrControlMutex);
+ 
+     Modes.sdrInitialized = 0;
+-    current_handler()->close();
++    (current_handler()->close)(); // parenthesised: Windows defines a close() macro
+ 
+     pthread_mutex_unlock(&Modes.sdrControlMutex);
+ }
+diff --git a/sdr_rtlsdr.c b/sdr_rtlsdr.c
+index fa7ba28..42457f1 100644
+--- a/sdr_rtlsdr.c
++++ b/sdr_rtlsdr.c
+@@ -497,6 +497,12 @@ void rtlsdrCancel() {
+ 
+ void rtlsdrClose() {
+     if (RTLSDR.dev) {
++#ifdef ENABLE_RTLSDR_BIASTEE
++        // The bias tee stays on after rtlsdr_close(), powering the antenna until the stick is
++        // unplugged; turn it off, so a stopped feeder leaves no voltage on the cable.
++        if (Modes.biastee)
++            rtlsdr_set_bias_tee(RTLSDR.dev, 0);
++#endif
+         rtlsdr_close(RTLSDR.dev);
+         RTLSDR.dev = NULL;
+     }

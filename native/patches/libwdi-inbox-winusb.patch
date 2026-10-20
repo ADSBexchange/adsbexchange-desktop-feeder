@@ -1,0 +1,122 @@
+libwdi changes for the desktop feeder's rtlsdr-driver helper (Windows 10/11 x64 only).
+Applied with "git apply" by native/CMakeLists.txt; git apply ignores this header.
+Byte-exact (marked -text in .gitattributes): libwdi's files mix CRLF and LF line endings.
+
+libwdi's WinUSB support embeds the WDK 8 co-installers (WdfCoInstaller01011.dll,
+winusbcoinstaller2.dll), which Windows 8 and later don't need: WinUSB and KMDF are built in.
+With WINUSB_INBOX (native/config/libwdi/config.h):
+1. embedder_files.h: don't embed the co-installers.
+2. winusb.inf.in: the inbox form Microsoft documents for Windows 8+ (Include/Needs winusb.inf,
+   no CoInstallers or Wdf sections).
+3. winusb.cat.in: the catalog lists only the inf.
+4. libwdi.c: with no co-installer to read a version from, DriverVer is 1.0.0.0.
+
+--- a/libwdi/embedder_files.h
++++ b/libwdi/embedder_files.h
+@@ -42,7 +42,7 @@
+ struct emb embeddable_fixed[] = {
+ 
+ // WinUSB
+-#if defined(WDK_DIR)
++#if defined(WDK_DIR) && !defined(WINUSB_INBOX)	// inbox WinUSB (Windows 8+) needs no co-installers
+ #	if defined(OPT_M32)
+ 		{ 0, WDK_DIR "\\redist\\wdf\\x86\\WdfCoInstaller0" STR(WDF_VER) ".dll", "x86" },
+ 		{ 0, WDK_DIR "\\redist\\" COINSTALLER_DIR "\\x86\\winusbcoinstaller2.dll", "x86" },
+--- a/libwdi/libwdi.c
++++ b/libwdi/libwdi.c
+@@ -1471,6 +1471,12 @@
+ 		goto out;
+ 	}
+ 
++#if defined(WINUSB_INBOX)
++	// Inbox WinUSB has no co-installer to take a driver version from
++	if ((driver_type == WDI_WINUSB) && (driver_version[driver_type].dwFileVersionMS == 0)) {
++		driver_version[driver_type].dwFileVersionMS = 0x00010000;
++	}
++#endif
+ 	// Write the date and version data
+ 	file_time.dwHighDateTime = driver_version[driver_type].dwFileDateMS;
+ 	file_time.dwLowDateTime = driver_version[driver_type].dwFileDateLS;
+--- a/libwdi/winusb.cat.in
++++ b/libwdi/winusb.cat.in
+@@ -1,5 +1,4 @@
+ # List of the binaries referenced by the WinUSB inf
+ # These are used to generate and self-sign a .cat file
+ 
+-WdfCoInstaller#WDF_VERSION#.dll
+-winusbcoinstaller2.dll
+\ No newline at end of file
++# (Inbox WinUSB, Windows 8 and later: no co-installers, so only the inf is listed)
+--- a/libwdi/winusb.inf.in
++++ b/libwdi/winusb.inf.in
+@@ -1,5 +1,6 @@
+ ; #INF_FILENAME#
+ ; Copyright (c) 2010-2023 Pete Batard <pete@akeo.ie> (GNU LGPL)
++; Windows 8 and later: WinUSB and KMDF are part of Windows, so no co-installers are needed.
+ [Strings]
+ DeviceName = "#DEVICE_DESCRIPTION#"
+ VendorName = "#DEVICE_MANUFACTURER#"
+@@ -39,21 +40,8 @@
+ Needs   = WINUSB.NT
+ 
+ [USB_Install.Services]
+-Include    = winusb.inf
+-AddService = WinUSB,0x00000002,WinUSB_ServiceInstall
+-
+-[WinUSB_ServiceInstall]
+-DisplayName   = "WinUSB - Kernel Driver #DRIVER_DATE# #DRIVER_VERSION#"
+-ServiceType   = 1
+-StartType     = 3
+-ErrorControl  = 1
+-ServiceBinary = %12%\WinUSB.sys
+-
+-[USB_Install.Wdf]
+-KmdfService = WINUSB, WinUsb_Install
+-
+-[WinUSB_Install]
+-KmdfLibraryVersion = #KMDF_VERSION#
++Include = winusb.inf
++Needs   = WINUSB.NT.Services
+ 
+ [USB_Install.HW]
+ AddReg = #USE_DEVICE_INTERFACE_GUID#
+@@ -63,38 +51,3 @@
+ 
+ [AddDeviceInterfaceGUID]
+ HKR,,DeviceInterfaceGUIDs,0x10000,%DeviceGUID%
+-
+-[USB_Install.NTx86.CoInstallers]
+-AddReg    = CoInstallers_AddReg
+-CopyFiles = CoInstallers_CopyFiles
+-
+-[USB_Install.NTamd64.CoInstallers]
+-AddReg    = CoInstallers_AddReg
+-CopyFiles = CoInstallers_CopyFiles
+-
+-[USB_Install.NTarm64.CoInstallers]
+-;
+-
+-[CoInstallers_AddReg]
+-HKR,,CoInstallers32,0x00010000,"WdfCoInstaller#WDF_VERSION#.dll,WdfCoInstaller","WinUSBCoInstaller2.dll"
+-
+-[CoInstallers_CopyFiles]
+-WinUSBCoInstaller2.dll
+-WdfCoInstaller#WDF_VERSION#.dll
+-
+-[DestinationDirs]
+-CoInstallers_CopyFiles = 11
+-
+-[SourceDisksNames]
+-1 = %SourceName%
+-
+-[SourceDisksFiles.x86]
+-WinUSBCoInstaller2.dll = 1,x86
+-WdfCoInstaller#WDF_VERSION#.dll = 1,x86
+-
+-[SourceDisksFiles.amd64]
+-WinUSBCoInstaller2.dll = 1,amd64
+-WdfCoInstaller#WDF_VERSION#.dll = 1,amd64
+-
+-[SourceDisksFiles.arm64]
+-;
+\ No newline at end of file

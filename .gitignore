@@ -1,0 +1,17 @@
+.gradle/
+.idea/
+.kotlin/
+build/
+*.iml
+.DS_Store
+
+# Native dependencies are cloned here by native/cmake/deps.cmake
+native/third_party/
+# Native build output (tools/build-native.ps1)
+native/build/
+# Synthetic captures made for local tests
+tools/testdata/
+# MSIs copied here by :app:packageMsi (too big for the repository)
+Releases/
+# Local reports and notes: not committed
+Reports/

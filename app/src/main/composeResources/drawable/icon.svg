@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 20 60 60" width="60" height="60">
+  <!-- The phone feeder's app icon (faceted stealth plane broadcasting from the nose), on black so
+       it reads on light and dark taskbars. -->
+  <rect x="24" y="20" width="60" height="60" rx="12" fill="#000000"/>
+  <path fill="#1E9E60" d="M54,42L33,68L37.5,75L47,69Z"/>
+  <path fill="#136B41" d="M54,42L75,68L70.5,75L61,69Z"/>
+  <path fill="#29D682" d="M54,42L48.5,60L54,73Z"/>
+  <path fill="#1A8651" d="M54,42L59.5,60L54,73Z"/>
+  <path fill="none" stroke="#29D682" stroke-linecap="round" stroke-width="3.4"
+        d="M48.34,37.34A8,8 0,0 1,59.66 37.34M44.1,33.1A14,14 0,0 1,63.9 33.1M39.86,28.86A20,20 0,0 1,68.14 28.86"/>
+</svg>

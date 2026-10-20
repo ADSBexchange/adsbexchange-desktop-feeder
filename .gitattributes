@@ -1,0 +1,19 @@
+* text=auto
+# Native sources and patches are built inside a Linux container; git apply needs LF.
+*.c text eol=lf
+*.h text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.patch text eol=lf
+# libwdi's sources mix CRLF and LF line endings, so its patch must be kept byte for byte.
+native/patches/libwdi-inbox-winusb.patch -text
+*.sh text eol=lf
+gradlew text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.ttf binary
+*.bin binary
+*.bmp binary
+*.ico binary

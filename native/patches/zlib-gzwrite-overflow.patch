@@ -1,0 +1,38 @@
+Upstream's fix for a heap overflow in zlib's gzip file writer, on top of zlib v1.3.2.
+Applied with "git apply" by native/CMakeLists.txt; git apply ignores this header.
+
+Fixes: CVE-2026-76844, CVE-2026-85091
+
+After a write fails (or stalls, for a non-blocking descriptor), gz_write() returned with
+strm.next_in still pointing into the caller's buffer, and the next gz* write call could write past
+the end of zlib's own input buffer. The fix resets the input pointer before returning.
+
+This is madler/zlib commit df84af25dc1942490e1d1c899a07619152a46148 (Mark Adler, 2026-09-16,
+"Fix buffer overflow bug in non-blocking gzwrite."), unchanged. Upstream's message names
+CVE-2026-85091; OSV lists the same commit as the fix for CVE-2026-76844. (GitHub's advisory
+database maps CVE-2026-76844 to GHSA-g84c-rxfj-3j2c, which is a webpack-dev-middleware advisory:
+a mistake on their side, so don't go by that GHSA.) Drop this patch when zlib releases a version
+after 1.3.2 that includes it (none had by 2026-10-11).
+
+In the app, readsb doesn't reach gzwrite (no gzip JSON, globe index, heatmap or state files), so
+this closes the advisory rather than a live path.
+
+tools/security-scan.ps1 treats the advisories on the "Fixes:" line as fixed for this library.
+
+diff --git a/gzwrite.c b/gzwrite.c
+index b217b85ce..512329244 100644
+--- a/gzwrite.c
++++ b/gzwrite.c
+@@ -242,8 +242,11 @@ local z_size_t gz_write(gz_statep state, voidpc buf, z_size_t len) {
+             n -= state->strm.avail_in;
+             state->x.pos += n;
+             len -= n;
+-            if (ret == -1)
++            if (ret == -1) {
++                state->strm.avail_in = 0;
++                state->strm.next_in = state->in;
+                 return state->again ? put - len : 0;
++            }
+         } while (len);
+     }
+ 
