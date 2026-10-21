@@ -162,7 +162,8 @@ isn't using it for positions).
 
 ## Building
 
-Needs JDK 17 and Docker Desktop. Nothing else is installed: the C compiler is the
+Needs JDK 17, Docker Desktop and PowerShell 7 (`tools\spike-test.ps1` uses an API Windows
+PowerShell 5.1 lacks). Nothing else is installed: the C compiler is the
 `mstorsjo/llvm-mingw` image, pinned by digest.
 
 ```powershell

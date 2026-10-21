@@ -17,6 +17,7 @@
 .PARAMETER Seconds
     Length of the synthetic capture (default 20).
 #>
+#Requires -Version 7.0
 param([int]$Seconds = 20)
 
 $ErrorActionPreference = 'Stop'
