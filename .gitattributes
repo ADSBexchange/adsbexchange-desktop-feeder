@@ -4,6 +4,8 @@
 *.h text eol=lf
 *.cmake text eol=lf
 CMakeLists.txt text eol=lf
+*.rc text eol=lf
+*.manifest text eol=lf
 *.patch text eol=lf
 # libwdi's sources mix CRLF and LF line endings, so its patch must be kept byte for byte.
 native/patches/libwdi-inbox-winusb.patch -text
