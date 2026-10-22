@@ -1,0 +1,22 @@
+# Builds and tests every pull request into dev or master, and on request.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, master]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'security/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
