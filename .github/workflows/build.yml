@@ -115,6 +115,7 @@ jobs:
           path: |
             app/build/reports/tests/test
             app/build/test-results/test
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Upload the unsigned installer
