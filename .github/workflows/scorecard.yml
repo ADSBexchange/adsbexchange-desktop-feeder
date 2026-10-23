@@ -1,5 +1,5 @@
 # OpenSSF Scorecard: rates the repository's practices (pinned dependencies, branch protection,
-# token permissions and others) and publishes the result, which the README badge shows. Runs on
+# token permissions and others) and publishes the result. Runs on
 # pushes to dev and when branch protection changes, and only while the repository is public, the
 # only kind Scorecard publishes for. The workflow keeps to the shape Scorecard requires for
 # publishing: one job, no top-level env or defaults, and only these steps.
