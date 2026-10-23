@@ -1,5 +1,11 @@
 # ADS-B Exchange Desktop Feeder
 
+[![CI](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/actions/workflows/ci.yml?query=branch%3Adev)
+[![Latest release](https://img.shields.io/github/v/release/ADSBexchange/adsbexchange-desktop-feeder)](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/ADSBexchange/adsbexchange-desktop-feeder/total)](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/releases)
+[![License](https://img.shields.io/github/license/ADSBexchange/adsbexchange-desktop-feeder)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-0078D6)
+
 A Windows app that turns a PC and an RTL-SDR USB stick into an [ADS-B Exchange](https://www.adsbexchange.com)
 feeder. Install it, plug in the stick, and it starts feeding.
 

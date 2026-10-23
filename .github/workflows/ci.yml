@@ -1,8 +1,14 @@
-# Builds and tests every pull request into dev or master, and on request.
+# Builds and tests every pull request into dev or master, every push to them, and on request.
 name: CI
 
 on:
   pull_request:
+    branches: [dev, master]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'security/**'
+  push:
     branches: [dev, master]
     paths-ignore:
       - '**.md'
