@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   visibility:
-    name: Repository is public
+    name: Check visibility
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
