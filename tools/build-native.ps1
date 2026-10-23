@@ -28,17 +28,8 @@ if ($Clean -and (Test-Path $Build)) {
     Remove-Item -Recurse -Force $Build
 }
 
-$script = @'
-set -e
-git config --global --add safe.directory '*'
-cmake -S /src/native -B /src/native/build -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE=/src/native/cmake/mingw-x64.cmake \
-    -DCMAKE_BUILD_TYPE=Release
-cmake --build /src/native/build
-x86_64-w64-mingw32-strip /src/native/build/readsb.exe /src/native/build/rtlsdr-driver.exe
-'@
-
-docker run --rm -v "${Repo}:/src" $Image sh -c ($script -replace "`r", '')
+# The build itself is tools/build-native.sh, which CI runs too.
+docker run --rm -v "${Repo}:/src" $Image sh /src/tools/build-native.sh
 if ($LASTEXITCODE -ne 0) {
     throw "Native build failed (exit $LASTEXITCODE)"
 }

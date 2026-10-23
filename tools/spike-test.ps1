@@ -120,11 +120,13 @@ $sinkCopy = if ($sinkAccept.IsCompleted) { $sinkAccept.Result.GetStream().CopyTo
 Start-Sleep -Seconds 5
 # Beast output port, as the MLAT client will read it.
 $beastBytes = 0
+$probePort = $null
 try {
     $c = [Net.Sockets.TcpClient]::new('127.0.0.1', $beastPort)
     $c.ReceiveTimeout = 3000
     $buf = New-Object byte[] 65536
     $until = (Get-Date).AddSeconds(2)
+    $probePort = ([Net.IPEndPoint]$c.Client.LocalEndPoint).Port
     $s = $c.GetStream()
     while ((Get-Date) -lt $until) {
         if ($s.DataAvailable) { $beastBytes += $s.Read($buf, 0, $buf.Length) } else { Start-Sleep -Milliseconds 50 }
@@ -165,7 +167,10 @@ Check $onWire "feed carries the desktop-tagged feeder UUID ($uuid)"
 Step 'Log'
 $coordLine = [regex]::Match($log, '(?im)^.*(--lat|--lon|\blat\b\W{0,3}-?\d+\.\d|location:\s*-?\d+\.\d|-76\.0).*$').Value
 Check (-not $coordLine) "readsb log has no receiver coordinates $(if ($coordLine) { "($coordLine)" })"
-$errLines = @($log -split "`n" | Where-Object { $_ -match '(?i)error|fatal|failed' })
+# Closing the probe above with data still unread resets the connection, which readsb logs as a
+# send error on that port; that one is the test's doing, not readsb's.
+$probeReset = if ($probePort) { "connection reset: 127\.0\.0\.1 port $probePort\b" } else { '^$' }
+$errLines = @($log -split "`n" | Where-Object { $_ -match '(?i)error|fatal|failed' -and $_ -notmatch $probeReset })
 Check ($errLines.Count -eq 0) "readsb log has no errors $(if ($errLines) { "(" + ($errLines -join ' | ') + ")" })"
 
 Step 'Decoded aircraft'
