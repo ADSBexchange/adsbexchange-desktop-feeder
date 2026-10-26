@@ -17,7 +17,7 @@ Discord server (Settings > Help in the app).
 - **Feeds ADS-B Exchange** with what the stick hears, decoded by [readsb](https://github.com/wiedehopf/readsb).
 - **Takes part in MLAT**, which works out the positions of aircraft that don't broadcast them, once
   you've entered the antenna's position.
-- **Sends the stats behind your feeder's stats page** on ADS-B Exchange (optional).
+- **Sends the stats behind your feeder's stats page** on ADS-B Exchange (recommended).
 - **Sets up the stick's driver itself.** No Zadig step: the first time a stick is plugged in,
   Windows asks for permission once, and feeding starts.
 - **Shows what you're receiving:** a live feed and MLAT status, a radar of the aircraft around you

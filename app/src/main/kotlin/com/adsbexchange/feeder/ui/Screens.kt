@@ -322,7 +322,7 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
             Toggle("Alert me if feeding stops", feedAlerts) { feedAlerts = it }
             Text("If this PC can't reach ADS-B Exchange for 15 minutes, hears no aircraft for 2 hours, or the " +
                 "RTL-SDR is unplugged.", color = Brand.TextSecondary, fontSize = 13.sp)
-            Toggle("Send stats for my feeder's stats page", statsUpload) { statsUpload = it }
+            Toggle("Send stats for my feeder's stats page (recommended)", statsUpload) { statsUpload = it }
             Text("Every 5 seconds, the aircraft this PC hears go to ADS-B Exchange, as with its Raspberry Pi feeders' " +
                 "stats package. That's roughly 1-10 GB a month, depending on how many aircraft are in range.",
                 color = Brand.TextSecondary, fontSize = 13.sp)
