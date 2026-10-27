@@ -1,0 +1,12 @@
+# Keeps the SHA-pinned actions in .github/workflows up to date. Gradle and the C libraries are
+# updated by hand: a Gradle update also needs gradle/verification-metadata.xml regenerated.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
