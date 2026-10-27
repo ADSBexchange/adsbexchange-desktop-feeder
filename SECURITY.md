@@ -1,8 +1,13 @@
 # Security
 
 Please report security problems privately, not in a public issue: use this repository's
-**Security** tab, then **Report a vulnerability**. Include what you found, how to reproduce it, and
-the app version (Settings > About).
+**Security** tab, then **Report a vulnerability**
+(https://github.com/ADSBexchange/adsbexchange-desktop-feeder/security/advisories/new). Include what
+you found, how to reproduce it, and the app version (Settings > About).
+
+We acknowledge reports within 5 business days. Once a fix is released, we publish a security
+advisory for the vulnerability and credit the reporter, unless they'd rather not be named. Please
+give us 90 days to release a fix before disclosing the vulnerability publicly.
 
 Of particular interest:
 
