@@ -19,7 +19,7 @@ Discord server (Settings > Help in the app).
   you've entered the antenna's position.
 - **Sends the stats behind your feeder's stats page** on ADS-B Exchange (optional).
 - **Sets up the stick's driver itself.** No Zadig step: the first time a stick is plugged in,
-  Windows asks for permission once, and feeding starts.
+  Windows asks for permission to install its driver, and feeding starts.
 - **Shows what you're receiving:** a live feed and MLAT status, a radar of the aircraft around you
   with nearby airports, the aircraft list, and your lifetime history, milestones and reception range.
 - **Runs quietly in the background**, from the notification area. It starts with Windows (Settings
@@ -30,10 +30,13 @@ Windows 10 and 11, 64-bit.
 
 ## Install
 
-1. Download the installer (`ADS-B Exchange Feeder-<version>.msi`) from this repository's
-   [Releases](../../releases) and run it. It's signed by JETNET, L.L.C. It installs for everyone
-   on the PC, so Windows asks for administrator permission once. While the publisher is new,
-   SmartScreen may still warn: choose **More info**, then **Run anyway**.
+1. Download the installer (`ADS-B.Exchange.Feeder-<version>.msi`) from this repository's
+   [latest release](../../releases/latest) and run it. It's signed by JETNET, L.L.C. While the
+   publisher is new, SmartScreen may still warn: choose **More info**, check the publisher is
+   JETNET, L.L.C., then choose **Run anyway**. The app installs for everyone on the PC, so
+   Windows asks for administrator permission. It asks again the first time a new stick is plugged
+   in (to install its driver) and when you install an update; on a PC where you're not an
+   administrator, an administrator needs to approve these.
 2. Leave **Open ADS-B Exchange Feeder** ticked on the last page and click **Finish**.
 3. Plug in the RTL-SDR stick. The first time, Windows asks for permission to install its driver:
    choose **Yes**. Feeding starts by itself.
