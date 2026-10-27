@@ -1,6 +1,8 @@
 # ADS-B Exchange Desktop Feeder
 
 [![CI](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/actions/workflows/ci.yml?query=branch%3Adev)
+[![Security scan](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/actions/workflows/security.yml/badge.svg?branch=dev)](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/actions/workflows/security.yml?query=branch%3Adev)
+[![CodeQL](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/actions/workflows/codeql.yml/badge.svg?branch=dev)](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/actions/workflows/codeql.yml?query=branch%3Adev)
 [![Latest release](https://img.shields.io/github/v/release/ADSBexchange/adsbexchange-desktop-feeder)](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/ADSBexchange/adsbexchange-desktop-feeder/total)](https://github.com/ADSBexchange/adsbexchange-desktop-feeder/releases)
 [![License](https://img.shields.io/github/license/ADSBexchange/adsbexchange-desktop-feeder)](LICENSE)
