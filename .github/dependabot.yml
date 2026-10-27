@@ -1,4 +1,4 @@
-# Keeps the SHA-pinned actions in .github/workflows up to date. Gradle and the C libraries are
+# Keeps the SHA-pinned actions in .github/workflows up to date, a week after each release. Gradle and the C libraries are
 # updated by hand: a Gradle update also needs gradle/verification-metadata.xml regenerated.
 version: 2
 updates:
@@ -7,6 +7,8 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ['*']
