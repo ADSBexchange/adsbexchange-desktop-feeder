@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Help with the app
+    url: https://discord.gg/ad8SSMpWvH
+    about: Ask on ADS-B Exchange's Discord server.
+  - name: Report a security problem
+    url: https://github.com/ADSBexchange/adsbexchange-desktop-feeder/security/advisories/new
+    about: Report it privately, as SECURITY.md describes.
