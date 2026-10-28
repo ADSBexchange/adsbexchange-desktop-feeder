@@ -99,11 +99,13 @@ data class FeederSettings(
     val autoStart: Boolean = true,
     /** Tray alerts when feeding stops working or the stick is unplugged (see [FeedWatchdog]). */
     val feedAlerts: Boolean = true,
-    /** Send ADS-B Exchange the stats behind this feeder's stats page; see [com.adsbexchange.feeder.service.StatsUploader]. */
-    val statsUpload: Boolean = true,
     /** Keep feeding while a laptop runs on its battery. Off: the engine pauses until it's plugged in. */
     val feedOnBattery: Boolean = false,
-    /** Keep sending stats on a metered connection (1-10 GB a month). Off: they pause, the feed goes on. */
+    /**
+     * Keep sending the stats behind the feeder's stats page ([com.adsbexchange.feeder.service.StatsUploader])
+     * on a metered connection (1-10 GB a month). Off: they pause, the feed goes on. They're otherwise
+     * always sent while feeding: since 0.5.21 there's no switch, and an old "statsUpload": false is ignored.
+     */
     val statsOnMetered: Boolean = false,
     /** Look for a newer version on GitHub now and then (UpdateChecker). */
     val checkForUpdates: Boolean = true,
@@ -201,7 +203,7 @@ data class FeederSettings(
         .put("location", location?.toJson() ?: JSONObject.NULL)
         .put("gain", gain).put("biasTee", biasTee).put("feedAdsbx", feedAdsbx)
         .put("autoStart", autoStart).put("startWithWindows", startWithWindows).put("userStopped", userStopped)
-        .put("feedAlerts", feedAlerts).put("statsUpload", statsUpload)
+        .put("feedAlerts", feedAlerts)
         .put("feedOnBattery", feedOnBattery).put("statsOnMetered", statsOnMetered)
         .put("checkForUpdates", checkForUpdates).put("dismissedUpdate", dismissedUpdate ?: JSONObject.NULL)
         .put("onboardingDone", onboardingDone)
@@ -302,7 +304,6 @@ data class FeederSettings(
                 feedAdsbx = o.optBoolean("feedAdsbx", true),
                 autoStart = o.optBoolean("autoStart", true),
                 feedAlerts = o.optBoolean("feedAlerts", true),
-                statsUpload = o.optBoolean("statsUpload", true),
                 feedOnBattery = o.optBoolean("feedOnBattery", false),
                 statsOnMetered = o.optBoolean("statsOnMetered", false),
                 checkForUpdates = o.optBoolean("checkForUpdates", true),

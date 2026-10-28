@@ -765,14 +765,14 @@ class FeederEngine(
                 StatsUploader.Config(settings.uuid, paths.aircraftJson, includeRange = t.mlatServer != null,
                     url = URI(it), intervalMs = t.statsIntervalMs)
             }
-            !_status.value.feeding || !settings.statsUpload || pausedMetered -> null
+            !_status.value.feeding || pausedMetered -> null
             else -> StatsUploader.Config(settings.uuid, paths.aircraftJson,
                 includeRange = settings.mlatReadiness() == MlatReadiness.READY)
         }
         if (pausedMetered != _status.value.statsPausedMetered) publish { it.copy(statsPausedMetered = pausedMetered) }
         if (wanted != statsConfig) {
             statsUploader?.stop()
-            if (wanted == null) log(if (pausedMetered) "stats: paused on a metered connection" else "stats: off")
+            if (wanted == null) log(if (pausedMetered) "stats: paused on a metered connection" else "stats: stopped (not feeding)")
             statsUploader = wanted?.let { StatsUploader(it) { msg -> log(msg) }.apply { start() } }
             statsConfig = wanted
         }
@@ -889,9 +889,9 @@ class FeederEngine(
         }
 
         /** Waiting for readsb to find a stick: check often. After a crash: back off, 10 s doubling to 60 s. */
-        /** Stats wait on a metered connection, unless the user said to send them anyway. Only matters while feeding with stats on. */
+        /** Stats wait on a metered connection, unless the user said to send them anyway. Only matters while feeding. */
         fun statsPausedMetered(metered: Boolean, settings: FeederSettings, feeding: Boolean): Boolean =
-            metered && feeding && settings.statsUpload && !settings.statsOnMetered
+            metered && feeding && !settings.statsOnMetered
 
         fun defaultRestartDelayMs(failedStarts: Int, noSdr: Boolean): Long = 1000L *
             if (noSdr) NO_SDR_RETRY_S else (RESTART_MIN_S shl failedStarts.coerceAtMost(3)).coerceAtMost(RESTART_MAX_S)

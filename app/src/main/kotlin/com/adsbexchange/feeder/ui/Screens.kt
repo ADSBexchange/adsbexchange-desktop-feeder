@@ -270,7 +270,6 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
     var privacy by remember { mutableStateOf(saved.mlatPrivacy) }
     var startWithWindows by remember { mutableStateOf(saved.startWithWindows) }
     var feedAlerts by remember { mutableStateOf(saved.feedAlerts) }
-    var statsUpload by remember { mutableStateOf(saved.statsUpload) }
     var feedOnBattery by remember { mutableStateOf(saved.feedOnBattery) }
     var statsOnMetered by remember { mutableStateOf(saved.statsOnMetered) }
     var gain by remember { mutableStateOf(saved.gain) }
@@ -323,9 +322,9 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
             Toggle("Alert me if feeding stops", feedAlerts) { feedAlerts = it }
             Text("If this PC can't reach ADS-B Exchange for 15 minutes, hears no aircraft for 2 hours, or the " +
                 "RTL-SDR is unplugged.", color = Brand.TextSecondary, fontSize = 13.sp)
-            Toggle("Send stats for my feeder's stats page", statsUpload) { statsUpload = it }
-            Text("Every 5 seconds, the aircraft this PC hears go to ADS-B Exchange, as with its Raspberry Pi feeders' " +
-                "stats package. That's roughly 1-10 GB a month, depending on how many aircraft are in range.",
+            Text("While feeding, the aircraft this PC hears also go to ADS-B Exchange every 5 seconds for your " +
+                "feeder's stats page, as with its Raspberry Pi feeders' stats package. That's roughly 1-10 GB a " +
+                "month, depending on how many aircraft are in range.",
                 color = Brand.TextSecondary, fontSize = 13.sp)
             TextButton(onClick = { openUrl(StatsUploader.statsPageUrl(saved.uuid)) }) { Text("Open my stats page") }
             Toggle("Send stats on metered connections", statsOnMetered) { statsOnMetered = it }
@@ -358,7 +357,7 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
                                 location = location, antennaAltitudeM = al, antennaConfirmed = confirmed,
                                 name = FeederSettings.sanitizeName(name), feedAdsbx = feed,
                                 mlatEnabled = mlat, mlatPrivacy = privacy, startWithWindows = startWithWindows,
-                                feedAlerts = feedAlerts, statsUpload = statsUpload, gain = gain, biasTee = biasTee,
+                                feedAlerts = feedAlerts, gain = gain, biasTee = biasTee,
                                 feedOnBattery = feedOnBattery, statsOnMetered = statsOnMetered,
                             )
                         }
@@ -455,8 +454,8 @@ private fun AboutSection(uuid: String, onShowLicenses: () -> Unit, updates: @Com
             "desktop feeder. With MLAT on, it also receives the position you entered, the antenna altitude and your " +
             "feeder name, which MLAT needs to work out aircraft positions. ADS-B Exchange's public MLAT map lists " +
             "feeders by name; with privacy off, it also shows your feeder at an approximate location, rounded to about " +
-            "1 km, never the precise one. Privacy is on to start with. With stats on, it receives the list of aircraft this PC hears every 5 seconds, " +
-            "for your stats page; each aircraft's distance and direction from the receiver are only included while " +
+            "1 km, never the precise one. Privacy is on to start with. For your stats page, it also receives the list of aircraft this PC hears " +
+            "every 5 seconds; each aircraft's distance and direction from the receiver are only included while " +
             "MLAT is on, since they reveal where the receiver is. The position isn't sent to anyone other than " +
             "ADS-B Exchange.",
             style = MaterialTheme.typography.bodySmall, color = Brand.TextSecondary)
