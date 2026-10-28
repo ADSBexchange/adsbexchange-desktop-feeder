@@ -30,7 +30,7 @@ Windows 10 and 11, 64-bit.
 
 ## Install
 
-1. Download the installer (`ADS-B.Exchange.Feeder-<version>.msi`) from this repository's
+1. Download the installer (`ADS-B-Exchange-Feeder.msi`) from this repository's
    [latest release](../../releases/latest) and run it. It's signed by JETNET, L.L.C. While the
    publisher is new, SmartScreen may still warn: choose **More info**, check the publisher is
    JETNET, L.L.C., then choose **Run anyway**. The app installs for everyone on the PC, so

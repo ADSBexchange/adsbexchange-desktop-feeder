@@ -32,7 +32,7 @@ class LocationPrivacyTest {
         val line = args.joinToString(" ")
         assertFalse(line, settings.uuid in line || "uuid=" in line)
         assertEquals("feeder-id", args[args.indexOf("--uuid-file") + 1])
-        assertTrue(line, "feed1.adsbexchange.com,30004,beast_reduce_plus_out" in args)
+        assertTrue(line, "feed1.adsbexchange.com,30004,beast_reduce_plus_out,feed2.adsbexchange.com,64004" in args)
         // Timed as ADS-B Exchange's feeder kit.
         assertEquals("0.5", args[args.indexOf("--net-beast-reduce-interval") + 1])
         assertEquals("0.2", args[args.indexOf("--net-ro-interval-beast-reduce") + 1])

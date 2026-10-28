@@ -51,6 +51,7 @@ import com.adsbexchange.feeder.data.FeederStatus.State
 import com.adsbexchange.feeder.data.ReceiverStatus
 import com.adsbexchange.feeder.data.RestartBudget
 import com.adsbexchange.feeder.data.StationLocation
+import com.adsbexchange.feeder.data.TypedNumber
 import com.adsbexchange.feeder.service.Autostart
 import com.adsbexchange.feeder.service.ResourceMonitor
 import com.adsbexchange.feeder.service.StatsUploader
@@ -341,9 +342,10 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = {
-                val la = lat.trim().replace(',', '.').toDoubleOrNull()
-                val lo = lon.trim().replace(',', '.').toDoubleOrNull()
-                val al = alt.trim().replace(',', '.').takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+                // "1,177" metres is 1177, not 1.177: TypedNumber reads thousands separators.
+                val la = TypedNumber.coordinate(lat)
+                val lo = TypedNumber.coordinate(lon)
+                val al = alt.takeIf { it.isNotBlank() }?.let(TypedNumber::metres)
                 val blank = lat.isBlank() && lon.isBlank()
                 val location = if (blank) null else la?.let { a -> lo?.let { o -> StationLocation.manual(a, o, al) } }
                 message = when {

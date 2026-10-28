@@ -181,7 +181,10 @@ data class FeederSettings(
             // the connector: with stats on, the ID opens the feeder's stats page, and this command
             // line goes to the log.
             add("--uuid-file"); add(paths.uuidFile.relativeTo(paths.root).path)
-            add("--net-connector"); add("$feedTo,beast_reduce_plus_out")
+            // primary-host,port,protocol[,failover-host,port]: readsb moves to feed2 while feed1 can't
+            // be reached, as ADS-B Exchange's own feeder image does.
+            val endpoints = feedEndpoints(feedTo)
+            add("--net-connector"); add((listOf(endpoints.first(), "beast_reduce_plus_out") + endpoints.drop(1)).joinToString(","))
             // As ADS-B Exchange's feeder kit sends it (configure.sh: REDUCE_INTERVAL 0.5,
             // --net-ro-interval 0.2): each aircraft at most twice a second, sent in batches every
             // 0.2 s, so ADS-B Exchange gets the same data from this app as from its own feeders.
@@ -212,6 +215,15 @@ data class FeederSettings(
         const val ADSBX_HOST = "feed1.adsbexchange.com"
         /** readsb connector target for the ADS-B Exchange feed. */
         const val ADSBX_FEED = "$ADSBX_HOST,30004"
+        /**
+         * Where readsb switches to while [ADSBX_FEED] can't be reached, as ADS-B Exchange's own
+         * feeder image does (`feed1.adsbexchange.com,30004,beast_reduce_out,feed2.adsbexchange.com,64004`).
+         */
+        const val ADSBX_FEED_FAILOVER = "feed2.adsbexchange.com,64004"
+
+        /** The feed's "host,port" endpoints: [feedTo], then its failover if it has one. A test sink has none. */
+        fun feedEndpoints(feedTo: String): List<String> =
+            if (feedTo == ADSBX_FEED) listOf(ADSBX_FEED, ADSBX_FEED_FAILOVER) else listOf(feedTo)
         const val MAX_NAME_LENGTH = 40
 
         /** The gain settings an RTL-SDR's R820T tuner has, in dB, as readsb's --gain help lists them. */
