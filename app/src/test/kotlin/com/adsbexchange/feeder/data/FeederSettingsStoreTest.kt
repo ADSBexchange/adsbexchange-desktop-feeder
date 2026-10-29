@@ -126,6 +126,17 @@ class FeederSettingsStoreTest {
             on.readsbArgs(paths, gpsdPort = 40000, feedTo = null, inputFile = File("capture.uc8")))
     }
 
+    /** Ticked to start with, and for 0.5.20's never-ticked box; unticking it is kept. */
+    @Test
+    fun antennaBoxStartsTickedAndKeepsAnUntick() {
+        assertTrue(FeederSettings.load(paths).antennaConfirmed)
+        val uuid = FeederSettings.load(paths).uuid
+        paths.settingsFile.writeText("{\"uuid\": \"$uuid\", \"antennaConfirmed\": false}")
+        assertTrue("0.5.20's box is ignored", FeederSettings.load(paths).antennaConfirmed)
+        FeederSettings.update(paths) { it.copy(antennaConfirmed = false) }
+        assertFalse(FeederSettings.load(paths).antennaConfirmed)
+    }
+
     @Test
     fun radarAirportsDefaultsOnAndPersistsOff() {
         assertTrue(FeederSettings.load(paths).radarAirports)

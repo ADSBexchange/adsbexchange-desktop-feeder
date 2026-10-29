@@ -123,8 +123,13 @@ data class FeederSettings(
      * shows one rounded to about 1 km. The name is listed either way.
      */
     val mlatPrivacy: Boolean = true,
-    /** The user confirmed the position they entered is within about 15 m of the antenna. */
-    val antennaConfirmed: Boolean = false,
+    /**
+     * The position entered is within about 15 m of the antenna, which MLAT needs. Ticked to start with
+     * since 0.5.21: a position typed into Settings is nearly always the antenna's. Saved as
+     * "antennaWithin15m"; 0.5.20's "antennaConfirmed" started unticked, so someone who typed a
+     * position but missed the box had no MLAT. It's ignored, so they get MLAT after updating.
+     */
+    val antennaConfirmed: Boolean = true,
     /** Antenna height in metres above the WGS84 ellipsoid (roughly: above sea level). */
     val antennaAltitudeM: Double? = null,
     /** The radar's range in nm, or 0 to fit the aircraft heard (see [com.adsbexchange.feeder.ui.RadarMath.autoRange]). */
@@ -208,7 +213,7 @@ data class FeederSettings(
         .put("checkForUpdates", checkForUpdates).put("dismissedUpdate", dismissedUpdate ?: JSONObject.NULL)
         .put("onboardingDone", onboardingDone)
         .put("mlatEnabled", mlatEnabled).put("mlatPrivacy", mlatPrivacy)
-        .put("antennaConfirmed", antennaConfirmed)
+        .put("antennaWithin15m", antennaConfirmed)
         .put("antennaAltitudeM", antennaAltitudeM ?: JSONObject.NULL)
         .put("radarRangeNm", radarRangeNm)
         .put("radarAirports", radarAirports)
@@ -313,7 +318,7 @@ data class FeederSettings(
                 onboardingDone = o.optBoolean("onboardingDone", false),
                 mlatEnabled = o.optBoolean("mlatEnabled", true),
                 mlatPrivacy = o.optBoolean("mlatPrivacy", true),
-                antennaConfirmed = o.optBoolean("antennaConfirmed", false),
+                antennaConfirmed = o.optBoolean("antennaWithin15m", true),
                 antennaAltitudeM = o.optDoubleOrNull("antennaAltitudeM"),
                 radarRangeNm = o.optInt("radarRangeNm", 0),
                 radarAirports = o.optBoolean("radarAirports", true),
