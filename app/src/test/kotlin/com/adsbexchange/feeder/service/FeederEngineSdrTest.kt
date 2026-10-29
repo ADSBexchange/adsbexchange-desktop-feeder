@@ -352,7 +352,6 @@ class FeederEngineSdrTest {
         assertTrue(FeederEngine.statsPausedMetered(metered = true, settings = on, feeding = true))
         assertFalse("not metered", FeederEngine.statsPausedMetered(false, on, true))
         assertFalse("the user said send anyway", FeederEngine.statsPausedMetered(true, on.copy(statsOnMetered = true), true))
-        assertFalse("stats off anyway", FeederEngine.statsPausedMetered(true, on.copy(statsUpload = false), true))
         assertFalse("not feeding", FeederEngine.statsPausedMetered(true, on, false))
     }
 

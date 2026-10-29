@@ -9,7 +9,7 @@ plugins {
 }
 
 // The app's version, in the MSI and the launcher.
-val appVersion = "0.5.20"
+val appVersion = "0.5.21"
 
 // The commit this build came from, shown under Settings > About and in the log so an installed
 // build can be matched to its source; "-dirty" if tracked files had uncommitted changes, "unknown"
@@ -285,7 +285,10 @@ val compileInstaller = tasks.register<Exec>("compileInstaller") {
         "-out", wixWork.get().dir("obj").asFile.absolutePath + "\\")
 }
 
-val msiName = "ADS-B Exchange Feeder-$appVersion.msi"
+// The same name every release, so .../releases/latest/download/ADS-B-Exchange-Feeder.msi always
+// downloads the newest installer (the version is in the MSI itself and in the release's title).
+// Hyphens rather than spaces: GitHub turns spaces in an asset's name into dots.
+val msiName = "ADS-B-Exchange-Feeder.msi"
 val linkInstaller = tasks.register<Exec>("linkInstaller") {
     dependsOn(compileInstaller)
     inputs.dir(wixWork.map { it.dir("obj") })

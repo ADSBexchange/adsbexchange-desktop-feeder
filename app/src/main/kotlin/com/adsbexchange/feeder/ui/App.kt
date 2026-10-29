@@ -145,8 +145,7 @@ fun FeederApp(engine: FeederEngine, paths: FeederPaths, updates: UpdateChecker? 
                         Page.AIRCRAFT -> AircraftScreen(receiver)
                         Page.HISTORY -> HistoryScreen(
                             history,
-                            statsPageUrl = remember(page) { FeederSettings.load(paths) }
-                                .takeIf { it.statsUpload }?.let { StatsUploader.statsPageUrl(it.uuid) },
+                            statsPageUrl = remember(page) { StatsUploader.statsPageUrl(FeederSettings.load(paths).uuid) },
                             onResetRange = {
                                 engine.resetRange()
                                 historyRefresh++

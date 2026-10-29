@@ -174,8 +174,7 @@ fun mlatReadinessText(r: MlatReadiness, accuracyM: Float?): String? = when (r) {
 private fun StatsBlock(status: FeederStatus, settings: FeederSettings) {
     val s = status.stats
     if (s == null) {
-        if (!settings.statsUpload) DetailRow("Stats page", "Off")
-        else if (status.statsPausedMetered) DetailRow("Stats page", "Paused on a metered connection")
+        if (status.statsPausedMetered) DetailRow("Stats page", "Paused on a metered connection")
         return
     }
     HorizontalDivider()
