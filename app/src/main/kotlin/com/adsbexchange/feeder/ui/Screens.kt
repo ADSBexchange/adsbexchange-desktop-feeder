@@ -454,7 +454,7 @@ private fun AboutSection(uuid: String, onShowLicenses: () -> Unit, updates: @Com
             "desktop feeder. With MLAT on, it also receives the position you entered, the antenna altitude and your " +
             "feeder name, which MLAT needs to work out aircraft positions. ADS-B Exchange's public MLAT map lists " +
             "feeders by name; with privacy off, it also shows your feeder at an approximate location, rounded to about " +
-            "1 km, never the precise one. Privacy is on to start with. For your stats page, it also receives the list of aircraft this PC hears " +
+            "1 km, never the precise one. Privacy is off to start with. For your stats page, it also receives the list of aircraft this PC hears " +
             "every 5 seconds; each aircraft's distance and direction from the receiver are only included while " +
             "MLAT is on, since they reveal where the receiver is. The position isn't sent to anyone other than " +
             "ADS-B Exchange.",

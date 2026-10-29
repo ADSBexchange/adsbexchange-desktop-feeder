@@ -120,9 +120,10 @@ data class FeederSettings(
     val mlatEnabled: Boolean = true,
     /**
      * mlat-client --privacy: the public MLAT map shows no location for this feeder. Without it, the map
-     * shows one rounded to about 1 km. The name is listed either way.
+     * shows one rounded to about 1 km. The name is listed either way. Off to start with since 0.5.21,
+     * as on ADS-B Exchange's own feeder image; a settings file from before keeps its choice.
      */
-    val mlatPrivacy: Boolean = true,
+    val mlatPrivacy: Boolean = false,
     /**
      * The position entered is within about 15 m of the antenna, which MLAT needs. Ticked to start with
      * since 0.5.21: a position typed into Settings is nearly always the antenna's. Saved as
@@ -317,7 +318,7 @@ data class FeederSettings(
                 userStopped = o.optBoolean("userStopped", false),
                 onboardingDone = o.optBoolean("onboardingDone", false),
                 mlatEnabled = o.optBoolean("mlatEnabled", true),
-                mlatPrivacy = o.optBoolean("mlatPrivacy", true),
+                mlatPrivacy = o.optBoolean("mlatPrivacy", false),
                 antennaConfirmed = o.optBoolean("antennaWithin15m", true),
                 antennaAltitudeM = o.optDoubleOrNull("antennaAltitudeM"),
                 radarRangeNm = o.optInt("radarRangeNm", 0),

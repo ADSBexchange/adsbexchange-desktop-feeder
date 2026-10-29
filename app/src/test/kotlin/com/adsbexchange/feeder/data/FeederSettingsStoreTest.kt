@@ -126,6 +126,14 @@ class FeederSettingsStoreTest {
             on.readsbArgs(paths, gpsdPort = 40000, feedTo = null, inputFile = File("capture.uc8")))
     }
 
+    /** Off for a new feeder, as on ADS-B Exchange's own image; a saved choice is kept. */
+    @Test
+    fun mlatPrivacyStartsOffAndKeepsASavedChoice() {
+        assertFalse(FeederSettings.load(paths).mlatPrivacy)
+        FeederSettings.update(paths) { it.copy(mlatPrivacy = true) }
+        assertTrue(FeederSettings.load(paths).mlatPrivacy)
+    }
+
     /** Ticked to start with, and for 0.5.20's never-ticked box; unticking it is kept. */
     @Test
     fun antennaBoxStartsTickedAndKeepsAnUntick() {

@@ -55,7 +55,7 @@ in `%LOCALAPPDATA%\ADS-B Exchange Feeder`.
 - **The receiver's position stays on the PC**, except that MLAT sends it to ADS-B Exchange, as
   every ADS-B Exchange feeder does. ADS-B Exchange's public MLAT map lists feeders by name, and with
   MLAT privacy off shows an approximate location (rounded to about 1 km), never the precise one.
-  MLAT privacy is on to start with.
+  MLAT privacy is off to start with, as on ADS-B Exchange's own feeders.
 - **It never appears on readsb's command line or in the log.** readsb gets it over a local gpsd
   connection that only readsb itself may open: any other program that connects is dropped first.
 - **The stats** list the aircraft this PC hears, every 5 seconds. Each aircraft's distance and
