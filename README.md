@@ -42,7 +42,7 @@ Windows 10 and 11, 64-bit.
 2. Leave **Open ADS-B Exchange Feeder** ticked on the last page and click **Finish**.
 3. Plug in the RTL-SDR stick. The first time, Windows asks for permission to install its driver:
    choose **Yes**. Feeding starts by itself.
-4. Optional, for MLAT: in **Settings**, enter the antenna's position and altitude.
+4. For MLAT: in **Settings**, enter the antenna's position and its altitude, in metres or feet.
 
 **Which stick?** Any RTL2832U-based RTL-SDR works. One built for aircraft, with a 1090 MHz filter
 and amplifier inside (such as ADS-B Exchange's), receives far more than a general-purpose stick on
