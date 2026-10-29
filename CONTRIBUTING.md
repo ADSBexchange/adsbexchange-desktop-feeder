@@ -39,7 +39,7 @@ tools\spike-test.ps1
 
 ## Releases
 
-Maintainers build, sign and publish releases from `master`.
+Maintainers build, sign and publish releases from `master`, as [RELEASING.md](RELEASING.md) describes.
 
 ## Licence
 
