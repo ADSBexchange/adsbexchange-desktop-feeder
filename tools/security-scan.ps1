@@ -33,7 +33,7 @@ if (-not $JavaHome) { throw 'Set JAVA_HOME (or -JavaHome) to the JDK 17 the MSI 
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$raw = Join-Path $root 'build\security-scan'
+$raw = [IO.Path]::Combine($root, 'build', 'security-scan')
 $committed = Join-Path $root 'security'
 New-Item -ItemType Directory -Force $raw, $committed | Out-Null
 
@@ -79,7 +79,7 @@ if (-not $osv) { throw 'osv-scanner produced no report' }
 # Every locked package ("group:name:version") and whether it ships: the lockfiles record which
 # Gradle configurations use it, and only runtimeClasspath goes into the MSI.
 $locked = @{}
-foreach ($lockfile in 'app\gradle.lockfile', 'buildscript-gradle.lockfile') {
+foreach ($lockfile in 'app/gradle.lockfile', 'buildscript-gradle.lockfile') {
     foreach ($line in Get-Content (Join-Path $root $lockfile)) {
         if ($line -match '^([^#=][^=]*:[^:=]+)=(.+)$') {
             $key, $configurations = $Matches[1], ($Matches[2] -split ',')
@@ -111,7 +111,7 @@ Write-Host "  $packageCount packages: $($shippedVulns.Count) vulnerable in the M
 foreach ($v in $shippedVulns) { $blocking.Add("Vulnerable library in the MSI: $($v.Package) ($($v.Ids))") }
 
 Step 'C libraries (OSV, by pinned commit)'
-$native = foreach ($line in Get-Content (Join-Path $root 'native\cmake\deps.cmake')) {
+$native = foreach ($line in Get-Content (Join-Path $root 'native/cmake/deps.cmake')) {
     if ($line -match '^fetch_dep\((\S+)\s+(\S+)\s+([0-9a-f]{40})\)\s*#\s*(.*)$') {
         [pscustomobject]@{
             Name = $Matches[1]; Url = $Matches[2]; Commit = $Matches[3]; Note = $Matches[4].Trim()
@@ -122,7 +122,7 @@ $native = foreach ($line in Get-Content (Join-Path $root 'native\cmake\deps.cmak
 # Advisories our own patches fix: a "Fixes:" line in the header of native/patches/<library>-*.patch.
 # OSV matches by commit, so it still reports them against the pinned upstream commit.
 $fixedBy = @{}
-foreach ($p in Get-ChildItem (Join-Path $root 'native\patches') -Filter '*.patch') {
+foreach ($p in Get-ChildItem (Join-Path $root 'native/patches') -Filter '*.patch') {
     $lib = ($p.BaseName -split '-')[0]
     foreach ($l in Get-Content $p.FullName) {
         if ($l -like 'diff --git*') { break }
@@ -170,7 +170,8 @@ foreach ($f in $findings) { $blocking.Add("Static analysis: $($f.check_id -repla
 
 # --- SBOM -------------------------------------------------------------------------------------
 Step 'Software Bill of Materials (syft + the C libraries + the Java runtime)'
-$syftExcludes = $notOurs | ForEach-Object { '--exclude', "./$_/**" }
+# One argument each: PowerShell on Linux expands a separate "./build/**" against the file system.
+$syftExcludes = $notOurs | ForEach-Object { "--exclude=./$_/**" }
 Run (@('--network', 'none') + $mount + @($images.syft.ref, 'scan', 'dir:/repo') + $syftExcludes +
     @('-o', 'cyclonedx-json=/out/sbom-syft.cdx.json')) | Out-Null
 $sbom = ReadJson 'sbom-syft.cdx.json'
