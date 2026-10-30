@@ -52,6 +52,19 @@
     <util:CloseApplication Id="CloseReadsb" Target="readsb.exe" CloseMessage="no"
                            TerminateProcess="0" RebootPrompt="no" />
 
+    <!-- Those run just before the files are copied, but Windows checks which files are in use much
+         earlier, in InstallValidate, and asks the programs holding them to close. The app only hides
+         its window when asked, so up to 0.5.21 an update with it running waited there until
+         "Installer is no longer responding". So quit it before InstallValidate too, as the user
+         running the installer (it's their app); /T takes its readsb with it. Not running is fine:
+         taskkill's exit code is ignored. -->
+    <SetProperty Id="WixQuietExecCmdLine" Before="QuitFeeder" Sequence="execute"
+                 Value="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM &quot;ADS-B Exchange Feeder.exe&quot;" />
+    <CustomAction Id="QuitFeeder" BinaryKey="WixCA" DllEntry="WixQuietExec" Execute="immediate" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="QuitFeeder" Before="InstallValidate" />
+    </InstallExecuteSequence>
+
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLDIR" Name="ADS-B Exchange Feeder">
