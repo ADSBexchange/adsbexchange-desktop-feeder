@@ -18,7 +18,8 @@ import kotlin.random.Random
  * ADS-B Exchange's stats package (github.com/ADSBexchange/adsbexchange-stats, its `json-status`
  * script) as part of the app: every 5 s, readsb's aircraft.json with the feeder UUID and signal
  * figures added, gzipped and posted to ADS-B Exchange. It's what fills the feeder's own stats page
- * ([statsPageUrl]). The feeder kits make it an optional extra; here it's a setting.
+ * ([statsPageUrl]). The feeder kits make it an optional extra; here it's part of feeding, paused only
+ * on a metered connection (FeederSettings.statsOnMetered).
  *
  * Same request as the script: same URL, headers and body, so ADS-B Exchange can't tell the two
  * apart beyond the UUID. One difference: readsb's per-aircraft distance and bearing from the

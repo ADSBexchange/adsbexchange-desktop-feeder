@@ -99,11 +99,13 @@ data class FeederSettings(
     val autoStart: Boolean = true,
     /** Tray alerts when feeding stops working or the stick is unplugged (see [FeedWatchdog]). */
     val feedAlerts: Boolean = true,
-    /** Send ADS-B Exchange the stats behind this feeder's stats page; see [com.adsbexchange.feeder.service.StatsUploader]. */
-    val statsUpload: Boolean = true,
     /** Keep feeding while a laptop runs on its battery. Off: the engine pauses until it's plugged in. */
     val feedOnBattery: Boolean = false,
-    /** Keep sending stats on a metered connection (1-10 GB a month). Off: they pause, the feed goes on. */
+    /**
+     * Keep sending the stats behind the feeder's stats page ([com.adsbexchange.feeder.service.StatsUploader])
+     * on a metered connection (1-10 GB a month). Off: they pause, the feed goes on. They're otherwise
+     * always sent while feeding: since 0.5.21 there's no switch, and an old "statsUpload": false is ignored.
+     */
     val statsOnMetered: Boolean = false,
     /** Look for a newer version on GitHub now and then (UpdateChecker). */
     val checkForUpdates: Boolean = true,
@@ -118,13 +120,25 @@ data class FeederSettings(
     val mlatEnabled: Boolean = true,
     /**
      * mlat-client --privacy: the public MLAT map shows no location for this feeder. Without it, the map
-     * shows one rounded to about 1 km. The name is listed either way.
+     * shows one rounded to about 1 km. The name is listed either way. Off to start with since 0.5.21,
+     * as on ADS-B Exchange's own feeder image; a settings file from before keeps its choice.
      */
-    val mlatPrivacy: Boolean = true,
-    /** The user confirmed the position they entered is within about 15 m of the antenna. */
-    val antennaConfirmed: Boolean = false,
+    val mlatPrivacy: Boolean = false,
+    /**
+     * The position entered is within about 15 m of the antenna, which MLAT needs. Ticked to start with
+     * since 0.5.21: a position typed into Settings is nearly always the antenna's. Saved as
+     * "antennaWithin15m"; 0.5.20's "antennaConfirmed" started unticked, so someone who typed a
+     * position but missed the box had no MLAT. It's ignored, so they get MLAT after updating.
+     */
+    val antennaConfirmed: Boolean = true,
     /** Antenna height in metres above the WGS84 ellipsoid (roughly: above sea level). */
     val antennaAltitudeM: Double? = null,
+    /**
+     * The unit the altitude was typed in, saved by Settings since 0.5.21 (or by confirming it on the
+     * Status screen). Null for an altitude saved before then, when Settings took metres only; see
+     * [altitudeNeedsCheck].
+     */
+    val altitudeUnit: AltitudeUnit? = null,
     /** The radar's range in nm, or 0 to fit the aircraft heard (see [com.adsbexchange.feeder.ui.RadarMath.autoRange]). */
     val radarRangeNm: Int = 0,
     /** Show nearby airports on the radar ([Airports]). */
@@ -181,7 +195,10 @@ data class FeederSettings(
             // the connector: with stats on, the ID opens the feeder's stats page, and this command
             // line goes to the log.
             add("--uuid-file"); add(paths.uuidFile.relativeTo(paths.root).path)
-            add("--net-connector"); add("$feedTo,beast_reduce_plus_out")
+            // primary-host,port,protocol[,failover-host,port]: readsb moves to feed2 while feed1 can't
+            // be reached, as ADS-B Exchange's own feeder image does.
+            val endpoints = feedEndpoints(feedTo)
+            add("--net-connector"); add((listOf(endpoints.first(), "beast_reduce_plus_out") + endpoints.drop(1)).joinToString(","))
             // As ADS-B Exchange's feeder kit sends it (configure.sh: REDUCE_INTERVAL 0.5,
             // --net-ro-interval 0.2): each aircraft at most twice a second, sent in batches every
             // 0.2 s, so ADS-B Exchange gets the same data from this app as from its own feeders.
@@ -198,13 +215,14 @@ data class FeederSettings(
         .put("location", location?.toJson() ?: JSONObject.NULL)
         .put("gain", gain).put("biasTee", biasTee).put("feedAdsbx", feedAdsbx)
         .put("autoStart", autoStart).put("startWithWindows", startWithWindows).put("userStopped", userStopped)
-        .put("feedAlerts", feedAlerts).put("statsUpload", statsUpload)
+        .put("feedAlerts", feedAlerts)
         .put("feedOnBattery", feedOnBattery).put("statsOnMetered", statsOnMetered)
         .put("checkForUpdates", checkForUpdates).put("dismissedUpdate", dismissedUpdate ?: JSONObject.NULL)
         .put("onboardingDone", onboardingDone)
         .put("mlatEnabled", mlatEnabled).put("mlatPrivacy", mlatPrivacy)
-        .put("antennaConfirmed", antennaConfirmed)
+        .put("antennaWithin15m", antennaConfirmed)
         .put("antennaAltitudeM", antennaAltitudeM ?: JSONObject.NULL)
+        .put("altitudeUnit", altitudeUnit?.symbol ?: JSONObject.NULL)
         .put("radarRangeNm", radarRangeNm)
         .put("radarAirports", radarAirports)
 
@@ -212,6 +230,15 @@ data class FeederSettings(
         const val ADSBX_HOST = "feed1.adsbexchange.com"
         /** readsb connector target for the ADS-B Exchange feed. */
         const val ADSBX_FEED = "$ADSBX_HOST,30004"
+        /**
+         * Where readsb switches to while [ADSBX_FEED] can't be reached, as ADS-B Exchange's own
+         * feeder image does (`feed1.adsbexchange.com,30004,beast_reduce_out,feed2.adsbexchange.com,64004`).
+         */
+        const val ADSBX_FEED_FAILOVER = "feed2.adsbexchange.com,64004"
+
+        /** The feed's "host,port" endpoints: [feedTo], then its failover if it has one. A test sink has none. */
+        fun feedEndpoints(feedTo: String): List<String> =
+            if (feedTo == ADSBX_FEED) listOf(ADSBX_FEED, ADSBX_FEED_FAILOVER) else listOf(feedTo)
         const val MAX_NAME_LENGTH = 40
 
         /** The gain settings an RTL-SDR's R820T tuner has, in dB, as readsb's --gain help lists them. */
@@ -290,7 +317,6 @@ data class FeederSettings(
                 feedAdsbx = o.optBoolean("feedAdsbx", true),
                 autoStart = o.optBoolean("autoStart", true),
                 feedAlerts = o.optBoolean("feedAlerts", true),
-                statsUpload = o.optBoolean("statsUpload", true),
                 feedOnBattery = o.optBoolean("feedOnBattery", false),
                 statsOnMetered = o.optBoolean("statsOnMetered", false),
                 checkForUpdates = o.optBoolean("checkForUpdates", true),
@@ -299,9 +325,10 @@ data class FeederSettings(
                 userStopped = o.optBoolean("userStopped", false),
                 onboardingDone = o.optBoolean("onboardingDone", false),
                 mlatEnabled = o.optBoolean("mlatEnabled", true),
-                mlatPrivacy = o.optBoolean("mlatPrivacy", true),
-                antennaConfirmed = o.optBoolean("antennaConfirmed", false),
+                mlatPrivacy = o.optBoolean("mlatPrivacy", false),
+                antennaConfirmed = o.optBoolean("antennaWithin15m", true),
                 antennaAltitudeM = o.optDoubleOrNull("antennaAltitudeM"),
+                altitudeUnit = AltitudeUnit.ofSymbol(o.optString("altitudeUnit").takeIf { !o.isNull("altitudeUnit") }),
                 radarRangeNm = o.optInt("radarRangeNm", 0),
                 radarAirports = o.optBoolean("radarAirports", true),
             )

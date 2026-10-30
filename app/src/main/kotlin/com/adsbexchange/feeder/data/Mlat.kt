@@ -31,14 +31,28 @@ fun FeederSettings.mlatReadiness(): MlatReadiness {
         loc == null -> MlatReadiness.NO_LOCATION
         loc.source != StationLocation.Source.MANUAL && (loc.accuracyM ?: Float.MAX_VALUE) > MLAT_ACCURACY_M ->
             MlatReadiness.IMPRECISE
-        mlatAltitudeM()?.let { it in -420.0..5100.0 } != true -> MlatReadiness.NO_ALTITUDE
+        mlatAltitudeM()?.let { it in MLAT_ALTITUDE_RANGE_M } != true -> MlatReadiness.NO_ALTITUDE
         !antennaConfirmed -> MlatReadiness.NOT_CONFIRMED
         else -> MlatReadiness.READY
     }
 }
 
+/** Antenna altitudes MLAT takes, in metres: from the Dead Sea shore to the highest places people live. */
+val MLAT_ALTITUDE_RANGE_M = -420.0..5100.0
+
 /** Antenna height for MLAT (above the WGS84 ellipsoid): the antenna height entered, else the position's. */
 fun FeederSettings.mlatAltitudeM(): Double? = antennaAltitudeM ?: location?.altitudeM
+
+/** The unit Settings shows the altitude in: the one it was saved in, else the region's. */
+fun FeederSettings.shownAltitudeUnit(region: AltitudeUnit = AltitudeUnit.forRegion()): AltitudeUnit =
+    altitudeUnit ?: region
+
+/**
+ * An altitude saved before 0.5.21, when Settings took metres only, on a PC whose region gives
+ * heights in feet: it may be feet typed as metres, so the Status screen asks once whether it's right.
+ */
+fun FeederSettings.altitudeNeedsCheck(region: AltitudeUnit = AltitudeUnit.forRegion()): Boolean =
+    altitudeUnit == null && mlatAltitudeM() != null && region == AltitudeUnit.FEET
 
 /**
  * The MLAT "user" field. Upstream requires one, so a blank name becomes an anonymous but stable

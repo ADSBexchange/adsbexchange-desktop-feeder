@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.adsbexchange.feeder.data.AltitudeUnit
 import com.adsbexchange.feeder.data.FeedState
 import com.adsbexchange.feeder.data.FeederSettings
 import com.adsbexchange.feeder.data.FeederStatus
@@ -18,6 +19,7 @@ import com.adsbexchange.feeder.data.FeederStatus.State
 import com.adsbexchange.feeder.data.MLAT_ACCURACY_M
 import com.adsbexchange.feeder.data.MlatReadiness
 import com.adsbexchange.feeder.data.ReceiverStatus
+import com.adsbexchange.feeder.data.mlatAltitudeM
 import com.adsbexchange.feeder.data.mlatUser
 import com.adsbexchange.feeder.service.StatsUploader
 import java.util.Locale
@@ -158,14 +160,17 @@ fun LiveFeedCard(
 }
 
 /** What MLAT is waiting for, or null when there's nothing to say. */
-fun mlatReadinessText(r: MlatReadiness, accuracyM: Float?): String? = when (r) {
+fun mlatReadinessText(r: MlatReadiness, accuracyM: Float?, altitudeM: Double? = null): String? = when (r) {
     MlatReadiness.READY, MlatReadiness.OFF -> null
     MlatReadiness.NOT_FEEDING -> "MLAT needs feeding to ADS-B Exchange turned on."
     MlatReadiness.NO_LOCATION -> "MLAT is waiting for the receiver position. Enter it in Settings."
     // Typed-in positions count as exact, so this only shows for one that came from elsewhere.
     MlatReadiness.IMPRECISE -> "MLAT needs a position accurate to %.0f m; this one is ±%s m. Enter it in Settings."
         .format(Locale.US, MLAT_ACCURACY_M, accuracyM?.let { "%.0f".format(Locale.US, it) } ?: "?")
-    MlatReadiness.NO_ALTITUDE -> "MLAT needs the antenna altitude. Enter it in Settings."
+    // One out of range is most likely feet typed as metres.
+    MlatReadiness.NO_ALTITUDE -> altitudeM?.let {
+        "MLAT can't use an antenna altitude of ${AltitudeUnit.describe(it)}. If you typed it in feet, correct it in Settings."
+    } ?: "MLAT needs the antenna altitude. Enter it in Settings."
     MlatReadiness.NOT_CONFIRMED -> "MLAT is waiting for you to confirm the position entered is the antenna's."
 }
 
@@ -174,8 +179,7 @@ fun mlatReadinessText(r: MlatReadiness, accuracyM: Float?): String? = when (r) {
 private fun StatsBlock(status: FeederStatus, settings: FeederSettings) {
     val s = status.stats
     if (s == null) {
-        if (!settings.statsUpload) DetailRow("Stats page", "Off")
-        else if (status.statsPausedMetered) DetailRow("Stats page", "Paused on a metered connection")
+        if (status.statsPausedMetered) DetailRow("Stats page", "Paused on a metered connection")
         return
     }
     HorizontalDivider()
@@ -209,7 +213,7 @@ private fun MlatBlock(
     val now = System.currentTimeMillis()
     val (color, text) = when {
         m.readiness != MlatReadiness.READY ->
-            Brand.Warn to (mlatReadinessText(m.readiness, settings.location?.accuracyM) ?: "")
+            Brand.Warn to (mlatReadinessText(m.readiness, settings.location?.accuracyM, settings.mlatAltitudeM()) ?: "")
         m.state == "CONNECTED" -> Brand.Green to buildString {
             append("MLAT connected for ").append(Format.duration(now - (m.connectedSinceMs ?: now)))
             m.peerCount?.let { append(" · synced with ").append(Format.plural(it, "nearby feeder", "nearby feeders")) }

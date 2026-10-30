@@ -19,6 +19,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adsbexchange.feeder.BuildInfo
+import com.adsbexchange.feeder.data.AltitudeUnit
 import com.adsbexchange.feeder.data.FeedState
 import com.adsbexchange.feeder.data.FeedWatchdog
 import com.adsbexchange.feeder.data.FeederPaths
@@ -48,9 +51,14 @@ import com.adsbexchange.feeder.data.FeederStatus
 import com.adsbexchange.feeder.data.FeederStatus.DriverSetup
 import com.adsbexchange.feeder.data.FeederStatus.Reason
 import com.adsbexchange.feeder.data.FeederStatus.State
+import com.adsbexchange.feeder.data.MLAT_ALTITUDE_RANGE_M
 import com.adsbexchange.feeder.data.ReceiverStatus
 import com.adsbexchange.feeder.data.RestartBudget
 import com.adsbexchange.feeder.data.StationLocation
+import com.adsbexchange.feeder.data.TypedNumber
+import com.adsbexchange.feeder.data.altitudeNeedsCheck
+import com.adsbexchange.feeder.data.mlatAltitudeM
+import com.adsbexchange.feeder.data.shownAltitudeUnit
 import com.adsbexchange.feeder.service.Autostart
 import com.adsbexchange.feeder.service.ResourceMonitor
 import com.adsbexchange.feeder.service.StatsUploader
@@ -72,7 +80,7 @@ fun StatusScreen(
     onShowAircraft: () -> Unit,
     usage: ResourceMonitor.Usage? = null,
 ) {
-    // Re-read with each status change, and after "The position is the antenna's" below.
+    // Re-read with each status change, and after "The position is the antenna's" or the altitude check below.
     var settingsVersion by remember { mutableStateOf(0) }
     val settings = remember(status, settingsVersion) { FeederSettings.load(paths) }
     val (headline, detail, color) = describe(status)
@@ -112,6 +120,19 @@ fun StatusScreen(
             SectionCard("Set your receiver's position") {
                 Text("readsb needs it to place aircraft, and MLAT needs it accurate to 15 m.", color = Brand.TextSecondary)
                 TextButton(onClick = onOpenSettings) { Text("Open Settings") }
+            }
+        }
+        settings.mlatAltitudeM()?.takeIf { settings.altitudeNeedsCheck() }?.let { m ->
+            SectionCard("Check your antenna altitude") {
+                Text("It's set to ${AltitudeUnit.describe(m)}. Settings used to take metres only, so if you typed " +
+                    "it in feet, MLAT has the wrong height for your antenna. Is it right?", color = Brand.TextSecondary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        FeederSettings.update(paths) { it.copy(altitudeUnit = it.shownAltitudeUnit()) }
+                        settingsVersion++
+                    }) { Text("Yes, that's right") }
+                    OutlinedButton(onClick = onOpenSettings) { Text("Change it in Settings") }
+                }
             }
         }
         if (status.state == State.RUNNING && receiver != null) {
@@ -256,12 +277,19 @@ private fun AircraftRow(vararg cells: String, header: Boolean = false, onClick: 
 
 // ---- Settings ------------------------------------------------------------------------------
 
+/** Why MLAT can't use an altitude of [m] metres, with the likeliest mistake: feet typed as metres. */
+private fun altitudeOutOfRange(m: Double): String =
+    if (m > MLAT_ALTITUDE_RANGE_M.endInclusive) "${AltitudeUnit.describe(m)} is higher than MLAT can use. " +
+        "If you typed it in feet, choose feet."
+    else "${AltitudeUnit.describe(m)} is lower than MLAT can use."
+
 @Composable
 fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
     val saved = remember { FeederSettings.load(paths) }
     var lat by remember { mutableStateOf(saved.location?.lat?.toString() ?: "") }
     var lon by remember { mutableStateOf(saved.location?.lon?.toString() ?: "") }
-    var alt by remember { mutableStateOf((saved.antennaAltitudeM ?: saved.location?.altitudeM)?.toString() ?: "") }
+    var altUnit by remember { mutableStateOf(saved.shownAltitudeUnit()) }
+    var alt by remember { mutableStateOf(saved.mlatAltitudeM()?.let { altUnit.fieldText(it) } ?: "") }
     var confirmed by remember { mutableStateOf(saved.antennaConfirmed) }
     var name by remember { mutableStateOf(saved.name) }
     var feed by remember { mutableStateOf(saved.feedAdsbx) }
@@ -269,7 +297,6 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
     var privacy by remember { mutableStateOf(saved.mlatPrivacy) }
     var startWithWindows by remember { mutableStateOf(saved.startWithWindows) }
     var feedAlerts by remember { mutableStateOf(saved.feedAlerts) }
-    var statsUpload by remember { mutableStateOf(saved.statsUpload) }
     var feedOnBattery by remember { mutableStateOf(saved.feedOnBattery) }
     var statsOnMetered by remember { mutableStateOf(saved.statsOnMetered) }
     var gain by remember { mutableStateOf(saved.gain) }
@@ -286,7 +313,22 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(lat, { lat = it }, Modifier.weight(1f), label = { Text("Latitude") }, singleLine = true)
                 OutlinedTextField(lon, { lon = it }, Modifier.weight(1f), label = { Text("Longitude") }, singleLine = true)
-                OutlinedTextField(alt, { alt = it }, Modifier.weight(1f), label = { Text("Antenna altitude (m)") }, singleLine = true)
+                OutlinedTextField(alt, { alt = it }, Modifier.weight(1f), label = { Text("Antenna altitude (${altUnit.symbol})") }, singleLine = true)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Altitude in", color = Brand.TextSecondary, fontSize = 13.sp)
+                AltitudeUnit.entries.forEach { u ->
+                    FilterChip(
+                        selected = altUnit == u, onClick = { altUnit = u },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Brand.GreenDeep, selectedLabelColor = Brand.Green),
+                        label = { Text(if (u == AltitudeUnit.FEET) "feet (ft)" else "metres (m)") },
+                    )
+                }
+            }
+            // Both units as it's typed, so a height typed in the wrong one stands out.
+            alt.takeIf { it.isNotBlank() }?.let { TypedNumber.altitude(it, altUnit) }?.let { m ->
+                if (m in MLAT_ALTITUDE_RANGE_M) Text("= ${AltitudeUnit.describe(m)}", color = Brand.TextSecondary, fontSize = 13.sp)
+                else Text(altitudeOutOfRange(m), color = Brand.Warn, fontSize = 13.sp)
             }
             Text("To find them: right-click the antenna's spot in an online map; most show the latitude and " +
                 "longitude. Altitude is the ground's height above sea level plus the antenna's height above the ground.",
@@ -322,9 +364,9 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
             Toggle("Alert me if feeding stops", feedAlerts) { feedAlerts = it }
             Text("If this PC can't reach ADS-B Exchange for 15 minutes, hears no aircraft for 2 hours, or the " +
                 "RTL-SDR is unplugged.", color = Brand.TextSecondary, fontSize = 13.sp)
-            Toggle("Send stats for my feeder's stats page", statsUpload) { statsUpload = it }
-            Text("Every 5 seconds, the aircraft this PC hears go to ADS-B Exchange, as with its Raspberry Pi feeders' " +
-                "stats package. That's roughly 1-10 GB a month, depending on how many aircraft are in range.",
+            Text("While feeding, the aircraft this PC hears also go to ADS-B Exchange every 5 seconds for your " +
+                "feeder's stats page, as with its Raspberry Pi feeders' stats package. That's roughly 1-10 GB a " +
+                "month, depending on how many aircraft are in range.",
                 color = Brand.TextSecondary, fontSize = 13.sp)
             TextButton(onClick = { openUrl(StatsUploader.statsPageUrl(saved.uuid)) }) { Text("Open my stats page") }
             Toggle("Send stats on metered connections", statsOnMetered) { statsOnMetered = it }
@@ -341,22 +383,25 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = {
-                val la = lat.trim().replace(',', '.').toDoubleOrNull()
-                val lo = lon.trim().replace(',', '.').toDoubleOrNull()
-                val al = alt.trim().replace(',', '.').takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+                // "1,177" is 1177, not 1.177: TypedNumber reads thousands separators, and "3862 ft" is feet.
+                val la = TypedNumber.coordinate(lat)
+                val lo = TypedNumber.coordinate(lon)
+                val al = alt.takeIf { it.isNotBlank() }?.let { TypedNumber.altitude(it, altUnit) }?.let { Math.round(it * 100) / 100.0 }
                 val blank = lat.isBlank() && lon.isBlank()
                 val location = if (blank) null else la?.let { a -> lo?.let { o -> StationLocation.manual(a, o, al) } }
                 message = when {
                     !blank && location == null -> "Latitude must be -90 to 90 and longitude -180 to 180."
-                    alt.isNotBlank() && al == null -> "Altitude must be a number of metres."
+                    alt.isNotBlank() && al == null ->
+                        "Altitude must be a number of ${if (altUnit == AltitudeUnit.FEET) "feet" else "metres"}."
+                    al != null && al !in MLAT_ALTITUDE_RANGE_M -> altitudeOutOfRange(al)
                     else -> {
                         val before = FeederSettings.load(paths)
                         FeederSettings.update(paths) {
                             it.copy(
-                                location = location, antennaAltitudeM = al, antennaConfirmed = confirmed,
+                                location = location, antennaAltitudeM = al, altitudeUnit = altUnit, antennaConfirmed = confirmed,
                                 name = FeederSettings.sanitizeName(name), feedAdsbx = feed,
                                 mlatEnabled = mlat, mlatPrivacy = privacy, startWithWindows = startWithWindows,
-                                feedAlerts = feedAlerts, statsUpload = statsUpload, gain = gain, biasTee = biasTee,
+                                feedAlerts = feedAlerts, gain = gain, biasTee = biasTee,
                                 feedOnBattery = feedOnBattery, statsOnMetered = statsOnMetered,
                             )
                         }
@@ -453,8 +498,8 @@ private fun AboutSection(uuid: String, onShowLicenses: () -> Unit, updates: @Com
             "desktop feeder. With MLAT on, it also receives the position you entered, the antenna altitude and your " +
             "feeder name, which MLAT needs to work out aircraft positions. ADS-B Exchange's public MLAT map lists " +
             "feeders by name; with privacy off, it also shows your feeder at an approximate location, rounded to about " +
-            "1 km, never the precise one. Privacy is on to start with. With stats on, it receives the list of aircraft this PC hears every 5 seconds, " +
-            "for your stats page; each aircraft's distance and direction from the receiver are only included while " +
+            "1 km, never the precise one. Privacy is off to start with. For your stats page, it also receives the list of aircraft this PC hears " +
+            "every 5 seconds; each aircraft's distance and direction from the receiver are only included while " +
             "MLAT is on, since they reveal where the receiver is. The position isn't sent to anyone other than " +
             "ADS-B Exchange.",
             style = MaterialTheme.typography.bodySmall, color = Brand.TextSecondary)

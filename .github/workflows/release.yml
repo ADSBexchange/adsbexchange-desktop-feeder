@@ -1,0 +1,43 @@
+# For a version tag (v1.2.3): checks that the tag matches the app's version and is on master,
+# then runs the full build. The installer it produces is unsigned and is kept as a workflow
+# artifact only; the signed installer for the GitHub release is built separately.
+name: Release build
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Tag and version
+    runs-on: ${{ github.event.repository.private && vars.LINUX_RUNNER && fromJSON(vars.LINUX_RUNNER) || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Tag matches appVersion and is on master
+        run: |
+          version=$(sed -nE 's/^val appVersion = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error file=app/build.gradle.kts::tag $GITHUB_REF_NAME doesn't match appVersion $version"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) isn't on master"
+            exit 1
+          fi
+          echo "$GITHUB_REF_NAME matches appVersion $version and is on master"
+
+  build:
+    needs: check
+    uses: ./.github/workflows/build.yml

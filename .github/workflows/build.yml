@@ -1,0 +1,127 @@
+# The build, called by ci.yml (pull requests) and release.yml (version tags):
+# - native: readsb.exe and rtlsdr-driver.exe, cross-compiled on Linux in the pinned llvm-mingw
+#   container (tools/build-native.sh);
+# - windows: the spike test, the unit tests and the unsigned installer.
+# Nothing here is signed and no secrets are used. Release builds are signed separately.
+name: Build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Native programs
+    # While the repository is private, the LINUX_RUNNER variable (a JSON list of runner labels)
+    # picks the runner; otherwise GitHub's ubuntu-latest.
+    runs-on: ${{ github.event.repository.private && vars.LINUX_RUNNER && fromJSON(vars.LINUX_RUNNER) || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The image digest is read from tools/build-native.ps1, so local and CI builds use the same
+      # one. The container runs as this user, so the files it writes can be cleaned up afterwards.
+      - name: Build in the llvm-mingw container
+        run: |
+          image=$(grep -oE 'mstorsjo/llvm-mingw@sha256:[0-9a-f]{64}' tools/build-native.ps1 | head -n 1)
+          if [ -z "$image" ]; then
+            echo "::error file=tools/build-native.ps1::no pinned mstorsjo/llvm-mingw image found"
+            exit 1
+          fi
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$GITHUB_WORKSPACE:/src" "$image" sh /src/tools/build-native.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native
+          path: |
+            native/build/readsb.exe
+            native/build/rtlsdr-driver.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Tests and installer
+    needs: native
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native
+          path: native/build
+
+      # Also writes tools/testdata/spike.iq, the capture the engine tests read.
+      - name: Spike test
+        run: ./tools/spike-test.ps1
+
+      - name: Tests and unsigned installer
+        run: ./gradlew.bat --no-daemon :app:test :app:buildMsi
+
+      - name: Check no test was skipped for lack of the native programs or the capture
+        if: ${{ !cancelled() }}
+        run: |
+          # Hosted Windows runners run elevated, so the driver helper's test skips its unsigned
+          # "prepare" case there; only skips for a missing readsb.exe, rtlsdr-driver.exe or capture fail.
+          $skips = @(Get-ChildItem app/build/test-results/test -Filter *.xml -ErrorAction SilentlyContinue | ForEach-Object {
+            ([xml](Get-Content -Raw $_.FullName)).SelectNodes('//testcase[skipped]')
+          } | Where-Object { $_.SelectSingleNode('skipped').GetAttribute('message') -match 'not built|no capture' })
+          foreach ($t in $skips) {
+            Write-Output "::error::$($t.GetAttribute('classname')).$($t.GetAttribute('name')) skipped: $($t.SelectSingleNode('skipped').GetAttribute('message'))"
+          }
+          if ($skips.Count -gt 0) { exit 1 }
+          Write-Output 'No test skipped for lack of the native programs or the capture'
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          $n = @{ tests = 0; failures = 0; errors = 0; skipped = 0 }
+          Get-ChildItem app/build/test-results/test -Filter *.xml -ErrorAction SilentlyContinue | ForEach-Object {
+            $suite = ([xml](Get-Content -Raw $_.FullName)).testsuite
+            foreach ($k in @($n.Keys)) { $n[$k] += [int]$suite.$k }
+          }
+          $lines = @('### Build', '', '| | |', '|---|---|',
+            "| Tests | $($n.tests) run, $($n.failures + $n.errors) failed, $($n.skipped) skipped |")
+          $msi = Get-ChildItem Releases -Filter *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msi) {
+            $sha = (Get-FileHash $msi.FullName -Algorithm SHA256).Hash.ToLower()
+            $lines += "| Installer (unsigned) | ``$($msi.Name)``, $([math]::Round($msi.Length / 1MB, 1)) MB |"
+            $lines += "| SHA-256 | ``$sha`` |"
+          }
+          $lines | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload test results
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results
+          path: |
+            app/build/reports/tests/test
+            app/build/test-results/test
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload the unsigned installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installer-unsigned
+          path: Releases/*.msi
+          if-no-files-found: error
+          retention-days: 7

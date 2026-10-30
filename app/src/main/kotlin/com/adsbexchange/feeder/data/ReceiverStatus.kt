@@ -151,15 +151,18 @@ class ReceiverStatusReader(private val paths: FeederPaths) {
     }
 }
 
-/** A feed connector ("host,port") and how to recognise its connect/disconnect lines in readsb's log. */
+/**
+ * A feed connector ("host,port", plus its failover: [FeederSettings.feedEndpoints]) and how to
+ * recognise its connect/disconnect lines in readsb's log. Connected to either server is connected.
+ */
 private class FeedTarget(target: String) {
-    private val host = target.substringBefore(",")
-    private val port = " port ${target.substringAfter(",")}"
+    private val endpoints = FeederSettings.feedEndpoints(target).map { it.substringBefore(",") to " port ${it.substringAfter(",")}" }
 
     fun classify(line: String): FeedState? {
-        if (!line.contains(host) || !line.contains(port)) return null
+        if (endpoints.none { (host, port) -> line.contains(host) && line.contains(port) }) return null
         if (line.contains("Connection established")) return FeedState.CONNECTED
-        if (line.contains("disconnected") || line.contains("failed") || line.contains("refused")) return FeedState.DISCONNECTED
+        if (line.contains("disconnected") || line.contains("failed") || line.contains("refused") ||
+            line.contains("timed out")) return FeedState.DISCONNECTED
         return null
     }
 }
