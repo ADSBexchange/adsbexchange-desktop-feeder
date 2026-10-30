@@ -133,6 +133,12 @@ data class FeederSettings(
     val antennaConfirmed: Boolean = true,
     /** Antenna height in metres above the WGS84 ellipsoid (roughly: above sea level). */
     val antennaAltitudeM: Double? = null,
+    /**
+     * The unit the altitude was typed in, saved by Settings since 0.5.21 (or by confirming it on the
+     * Status screen). Null for an altitude saved before then, when Settings took metres only; see
+     * [altitudeNeedsCheck].
+     */
+    val altitudeUnit: AltitudeUnit? = null,
     /** The radar's range in nm, or 0 to fit the aircraft heard (see [com.adsbexchange.feeder.ui.RadarMath.autoRange]). */
     val radarRangeNm: Int = 0,
     /** Show nearby airports on the radar ([Airports]). */
@@ -216,6 +222,7 @@ data class FeederSettings(
         .put("mlatEnabled", mlatEnabled).put("mlatPrivacy", mlatPrivacy)
         .put("antennaWithin15m", antennaConfirmed)
         .put("antennaAltitudeM", antennaAltitudeM ?: JSONObject.NULL)
+        .put("altitudeUnit", altitudeUnit?.symbol ?: JSONObject.NULL)
         .put("radarRangeNm", radarRangeNm)
         .put("radarAirports", radarAirports)
 
@@ -321,6 +328,7 @@ data class FeederSettings(
                 mlatPrivacy = o.optBoolean("mlatPrivacy", false),
                 antennaConfirmed = o.optBoolean("antennaWithin15m", true),
                 antennaAltitudeM = o.optDoubleOrNull("antennaAltitudeM"),
+                altitudeUnit = AltitudeUnit.ofSymbol(o.optString("altitudeUnit").takeIf { !o.isNull("altitudeUnit") }),
                 radarRangeNm = o.optInt("radarRangeNm", 0),
                 radarAirports = o.optBoolean("radarAirports", true),
             )

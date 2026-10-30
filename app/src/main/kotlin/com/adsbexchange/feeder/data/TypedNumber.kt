@@ -13,6 +13,22 @@ object TypedNumber {
     /** An altitude in metres. Feet aren't accepted, so "3450 ft" isn't saved as 3450 m. */
     fun metres(typed: String): Double? = parse(typed, quantity = true, units = listOf("metres", "meters", "m"))
 
+    /**
+     * An altitude, in metres, typed in [unit] unless it says otherwise: "3862 ft", "3862'" and
+     * "3862 feet" are feet and "1177 m" is metres whichever unit is chosen. A trailing ' is feet;
+     * one between digits ("1'177") is still a thousands separator.
+     */
+    fun altitude(typed: String, unit: AltitudeUnit): Double? {
+        FEET_MARK.find(typed)?.let { mark ->
+            return parse(typed.substring(0, mark.range.first), quantity = true, units = emptyList())?.let(AltitudeUnit.FEET::toMetres)
+        }
+        if (unit == AltitudeUnit.METRES || METRE_MARK.containsMatchIn(typed)) return metres(typed)
+        return parse(typed, quantity = true, units = emptyList())?.let(unit::toMetres)
+    }
+
+    private val FEET_MARK = Regex("(?i)\\s*(ft|feet|foot|'|′)\\s*$")
+    private val METRE_MARK = Regex("(?i)\\d\\s*(m|metres|meters)\\s*$")
+
     /** A gain in dB. */
     fun decibels(typed: String): Double? = parse(typed, quantity = true, units = listOf("db"))
 
