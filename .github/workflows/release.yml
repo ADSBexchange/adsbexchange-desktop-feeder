@@ -212,10 +212,11 @@ jobs:
         with:
           subject-path: installer/ADS-B-Exchange-Feeder.msi
 
-      # The previous release's notes, under a reminder with this installer's SHA-256, are the
-      # starting point; the maintainer updates them and removes the reminder before publishing.
-      # GitHub keeps several drafts for one tag, so a draft from an earlier run of this job is
-      # replaced rather than joined by a second one. Published releases are never touched.
+      # The previous release's notes, with their SHA-256 replaced by this installer's and a reminder
+      # block on top, are the starting point; the maintainer updates them and removes the reminder
+      # before publishing. GitHub keeps several drafts for one tag, so a draft from an earlier run
+      # of this job is replaced rather than joined by a second one. Published releases are never
+      # touched.
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -227,7 +228,7 @@ jobs:
             echo '>'
             echo "> SHA-256 of \`ADS-B-Exchange-Feeder.msi\`: \`$hash\`"
             echo
-            gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body || :
+            gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body | sed -E "s/\b[0-9a-f]{64}\b/$hash/g" || :
           } > notes.md
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
             --jq '.[] | select(.draft and .tag_name == $ENV.GITHUB_REF_NAME) | .id' |
