@@ -28,6 +28,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,7 +64,10 @@ import com.adsbexchange.feeder.service.Autostart
 import com.adsbexchange.feeder.service.ResourceMonitor
 import com.adsbexchange.feeder.service.StatsUploader
 import com.adsbexchange.feeder.service.UpdateChecker
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 // ---- Status --------------------------------------------------------------------------------
 
@@ -482,6 +486,23 @@ private fun gainLabel(g: String): String = when (g) {
     else -> "$g dB"
 }
 
+/**
+ * The feeder ID, with a button to copy it, for linking this feeder to an ADS-B Exchange account.
+ * "Copied" shows for a moment after; the clipboard can be busy with another program, so that's said too.
+ */
+@Composable
+private fun FeederIdRow(uuid: String) {
+    var result by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(result) { if (result != null) { delay(2_000); result = null } }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Feeder ID: $uuid", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Brand.TextSecondary)
+        TextButton(onClick = {
+            result = if (runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(uuid), null) }.isSuccess)
+                "Copied" else "Couldn't copy; try again"
+        }) { Text(result ?: "Copy to clipboard") }
+    }
+}
+
 /** As the phone's Settings > About: version, what's shared, and the GPL's notices and source. */
 @Composable
 private fun AboutSection(uuid: String, onShowLicenses: () -> Unit, updates: @Composable () -> Unit = {}) {
@@ -492,7 +513,7 @@ private fun AboutSection(uuid: String, onShowLicenses: () -> Unit, updates: @Com
             Text("This is a beta: it works, and it's being tested before a full release. If something doesn't, " +
                 "tell us on Discord (Help, above).", style = MaterialTheme.typography.bodySmall, color = Brand.TextSecondary)
         }
-        Text("Feeder ID: $uuid", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Brand.TextSecondary)
+        FeederIdRow(uuid)
         Text("What ADS-B Exchange receives", style = MaterialTheme.typography.titleSmall)
         Text("ADS-B Exchange receives the aircraft messages this PC hears, with a feeder ID that marks this as a " +
             "desktop feeder. With MLAT on, it also receives the position you entered, the antenna altitude and your " +

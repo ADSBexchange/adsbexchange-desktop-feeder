@@ -229,17 +229,17 @@ private fun trayText(s: FeederStatus): String = if (s.sdrFailing && s.state != S
 }
 
 /**
- * Brings the window in front of everything else. The launcher Explorer starts runs the app as a
- * second process, and Windows only lets the process the user started take the foreground, so a
- * plain toFront() leaves the window behind whatever was open. Being briefly always-on-top isn't
- * subject to that rule.
+ * Brings the window to the front, restoring it if it was minimised. Where Windows doesn't let the
+ * app take the foreground, it flashes the app's taskbar button instead.
+ *
+ * Up to 0.5.22 this also made the window briefly always-on-top, to get past Windows' rule that only
+ * the process the user started may take the foreground (the launcher runs the app as a second
+ * process). But on a window that wasn't active, that left Java unable to give it keyboard focus:
+ * text fields showed focus and took no typing until the window had been switched away from and back.
  */
 private fun bringToFront(window: java.awt.Window) {
     (window as? java.awt.Frame)?.let { if (it.extendedState and java.awt.Frame.ICONIFIED != 0) it.extendedState = java.awt.Frame.NORMAL }
-    window.isAlwaysOnTop = true
     window.toFront()
-    window.requestFocus()
-    window.isAlwaysOnTop = false
 }
 
 /** A second start of the app leaves this file for the running one, which then shows its window. */
