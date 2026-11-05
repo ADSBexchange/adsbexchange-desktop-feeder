@@ -63,6 +63,10 @@ gh pr create --base dev --fill
 gh pr checks --watch
 ```
 
+The pull request's description needs the template's "Release note" section: one or two sentences
+for people who feed, or "none". `--fill` takes the description from the commit message, so either
+give the commit message that section or add it on GitHub. The release's notes are made from it.
+
 Once checks pass (and someone has looked at it), merge it:
 
 ```powershell
@@ -142,18 +146,26 @@ Start-Process msiexec -ArgumentList '/i', "$PWD\Releases\ADS-B-Exchange-Feeder.m
 
 ## 6. Release notes
 
-The draft's notes are the previous release's, with the SHA-256 in "Verify the download" already
-replaced by the new installer's, under a reminder block that repeats it. Edit them:
+The draft's notes are the previous release's, with:
+
+- the version in the title;
+- one "What's new in X.Y.Z" section, made from the "Release note" sections of the pull requests
+  merged since the previous release, in place of the previous release's, and a link to the earlier
+  releases' notes;
+- the SHA-256 in "Verify the download" set to the new installer's.
+
+A reminder block on top lists what to check: pull requests without a release note, any that ticks
+"Changes what the app sends, or a privacy setting or its default", and commits that didn't come from
+a pull request. The same notes are in the run's "Draft release" summary. Without a reminder block,
+read the notes and go on to step 7. With one, edit them:
 
 ```powershell
 gh release view vX.Y.Z --json body --jq .body > notes.md
-git log --format='- %s' <previous tag>..vX.Y.Z
 # ... edit notes.md ...
 gh release edit vX.Y.Z --notes-file notes.md
 ```
 
-- Delete the reminder block.
-- Add a "What's new in X.Y.Z" section at the top.
+- Deal with each item in the reminder block, then delete it.
 - Update anything in Install, Privacy and Good to know that changed.
 - State plainly any change to what the app sends, or to a privacy setting or its default, and what
   happens to people who update.
