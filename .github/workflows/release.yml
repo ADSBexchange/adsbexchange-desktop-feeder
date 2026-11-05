@@ -4,8 +4,9 @@
 # - sign: once a maintainer approves the `release` environment, builds the installer from the same
 #   native programs and signs it through Azure Artifact Signing, signing in with GitHub's OIDC token
 #   (no stored credential);
-# - publish: attests the signed installer's provenance and creates a draft GitHub release with it.
-# A maintainer edits the draft's notes and publishes it; the app's update check ignores drafts.
+# - publish: attests the signed installer's provenance and creates a draft GitHub release with it,
+#   its notes made from the pull requests' release notes.
+# A maintainer checks the draft and publishes it; the app's update check ignores drafts.
 name: Release
 
 on:
@@ -196,9 +197,16 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: read
       id-token: write
       attestations: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release-notes.py
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: installer-signed
@@ -212,24 +220,19 @@ jobs:
         with:
           subject-path: installer/ADS-B-Exchange-Feeder.msi
 
-      # The previous release's notes, with their SHA-256 replaced by this installer's and a reminder
-      # block on top, are the starting point; the maintainer updates them and removes the reminder
-      # before publishing. GitHub keeps several drafts for one tag, so a draft from an earlier run
-      # of this job is replaced rather than joined by a second one. Published releases are never
-      # touched.
+      # The notes are the previous release's, with this version's "What's new" made from the
+      # pull requests' release notes and the SHA-256 set to this installer's
+      # (tools/release-notes.py). A reminder block on top lists anything to check before
+      # publishing. GitHub keeps several drafts for one tag, so a draft from an earlier run of this
+      # job is replaced rather than joined by a second one. Published releases are never touched.
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.check.outputs.version }}
         run: |
           hash=$(cut -d' ' -f1 installer/ADS-B-Exchange-Feeder.msi.sha256)
-          {
-            echo "> **Draft: update these notes for $VERSION, then delete this block.**"
-            echo '>'
-            echo "> SHA-256 of \`ADS-B-Exchange-Feeder.msi\`: \`$hash\`"
-            echo
-            gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body | sed -E "s/\b[0-9a-f]{64}\b/$hash/g" || :
-          } > notes.md
+          python3 tools/release-notes.py "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$hash" > notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
             --jq '.[] | select(.draft and .tag_name == $ENV.GITHUB_REF_NAME) | .id' |
             while read -r id; do

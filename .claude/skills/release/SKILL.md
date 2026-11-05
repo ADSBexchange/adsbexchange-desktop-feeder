@@ -84,11 +84,12 @@ continue until they confirm.
 
 ### 5. Release notes
 
-RELEASING.md step 6. Start from the draft's notes and the commits since the previous tag (read the
-full commit messages, not just subjects). Write for people who feed ADS-B Exchange, not developers.
-List any change to what is sent, to privacy settings or their defaults, or to what happens on
-update, and ask the person to confirm those lines. Put the notes in front of them; updating the
-draft is a yes.
+RELEASING.md step 6. The draft's "What's new" comes from the pull requests' release notes. Work
+through its reminder block, if it has one: for a pull request or commit with no note, read the full
+pull request or commit message and write one. Write for people who feed ADS-B Exchange, not
+developers. List any change to what is sent, to privacy settings or their defaults, or to what
+happens on update, and ask the person to confirm those lines. Put the notes in front of them;
+updating the draft is a yes.
 
 ### 6. Publish
 
