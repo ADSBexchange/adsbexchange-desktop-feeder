@@ -1,5 +1,6 @@
 package com.adsbexchange.feeder.ui
 
+import androidx.compose.foundation.LocalScrollbarStyle
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.scrollBy
@@ -100,7 +101,8 @@ fun ScrollingColumn(
     Box(modifier) {
         Column(Modifier.fillMaxSize().verticalScroll(state).padding(end = SCROLLBAR_ROOM),
             verticalArrangement = verticalArrangement, content = content)
-        VerticalScrollbar(rememberScrollbarAdapter(state), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+        VerticalScrollbar(rememberScrollbarAdapter(state), Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            style = scrollbarStyle())
     }
 }
 
@@ -116,9 +118,21 @@ fun ScrollingLazyColumn(
     Box(modifier) {
         LazyColumn(Modifier.fillMaxSize().padding(end = SCROLLBAR_ROOM), state, verticalArrangement = verticalArrangement,
             content = content)
-        VerticalScrollbar(rememberScrollbarAdapter(state), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+        VerticalScrollbar(rememberScrollbarAdapter(state), Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            style = scrollbarStyle())
     }
 }
 
 /** Room at the right of a scrolling area's content for its scrollbar. */
 private val SCROLLBAR_ROOM = 14.dp
+
+/**
+ * Compose's scrollbar is a faint black, made for light backgrounds, so on the app's black it
+ * couldn't be seen: grey here, brighter under the pointer.
+ */
+@Composable
+private fun scrollbarStyle() = LocalScrollbarStyle.current.copy(
+    thickness = 8.dp,
+    unhoverColor = Brand.TextSecondary.copy(alpha = 0.45f),
+    hoverColor = Brand.Text.copy(alpha = 0.75f),
+)
