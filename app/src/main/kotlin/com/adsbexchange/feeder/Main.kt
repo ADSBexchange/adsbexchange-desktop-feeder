@@ -1,10 +1,12 @@
 package com.adsbexchange.feeder
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Notification
@@ -29,6 +31,8 @@ import com.adsbexchange.feeder.service.FeederEngine
 import com.adsbexchange.feeder.service.UpdateChecker
 import com.adsbexchange.feeder.ui.openUrl
 import com.adsbexchange.feeder.ui.FeederApp
+import com.adsbexchange.feeder.ui.LocalPageKeys
+import com.adsbexchange.feeder.ui.PageKeys
 import java.io.RandomAccessFile
 import java.nio.channels.FileLock
 import javax.swing.JOptionPane
@@ -124,6 +128,9 @@ private fun runApp(paths: FeederPaths, args: Array<String>) {
             },
         )
 
+        // Page Up/Down, Home/End and the arrows scroll the page shown, when nothing else used them.
+        val pageKeys = remember { PageKeys() }
+        val keyScope = rememberCoroutineScope()
         if (windowOpen) {
             Window(
                 onCloseRequest = {
@@ -138,11 +145,12 @@ private fun runApp(paths: FeederPaths, args: Array<String>) {
                 title = BuildInfo.appTitle,
                 icon = icon,
                 state = rememberWindowState(width = 720.dp, height = 760.dp),
+                onKeyEvent = { pageKeys.handle(it, keyScope) },
             ) {
                 LaunchedEffect(Unit) { engine.uiVisible = true }
                 // Every time it's opened, including the first: in front of whatever else is open.
                 LaunchedEffect(raiseRequests) { bringToFront(window) }
-                FeederApp(engine, paths, updates)
+                CompositionLocalProvider(LocalPageKeys provides pageKeys) { FeederApp(engine, paths, updates) }
             }
         }
         LaunchedEffect(windowOpen) {

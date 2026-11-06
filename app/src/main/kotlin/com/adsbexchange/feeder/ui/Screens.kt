@@ -11,10 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -95,7 +92,7 @@ fun StatusScreen(
     val settings = remember(status, settingsVersion) { FeederSettings.load(paths) }
     val (headline, detail, color) = describe(status)
     val needsDriver = status.state == State.STARTING && status.reason == Reason.NEEDS_DRIVER
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScrollingColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionCard(null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StatusDot(color)
@@ -249,7 +246,7 @@ fun AircraftScreen(receiver: ReceiverStatus?) {
         Text("No aircraft yet.", color = Brand.TextSecondary)
         return
     }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    ScrollingLazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
             Text("Click an aircraft to see it on the ADS-B Exchange map.", color = Brand.TextSecondary,
                 fontSize = 13.sp, modifier = Modifier.padding(bottom = 4.dp))
@@ -417,7 +414,7 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
     if (showLicenses) return LicensesScreen(onBack = { showLicenses = false })
 
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ScrollingColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionCard("Receiver position") {
                 Text("Where the antenna is. It stays on this PC, except that MLAT sends it to ADS-B Exchange (whose " +
                     "public MLAT map shows it rounded to about 1 km, or not at all while MLAT privacy is on).",
