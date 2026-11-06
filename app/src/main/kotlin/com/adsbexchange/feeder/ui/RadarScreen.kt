@@ -1,6 +1,8 @@
 package com.adsbexchange.feeder.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +25,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -129,15 +130,16 @@ fun RadarScreen(
         if (beyond > 0) append(" · $beyond beyond $shownNm nm")
     }
 
+    // The radar keeps the dark look in either Appearance: its aircraft colours are set for it.
     val radar = @Composable { modifier: Modifier ->
-        Box(modifier) {
+        Box(modifier.background(DarkPalette.page, RoundedCornerShape(8.dp))) {
             RadarCanvas(blips, trails, outline, airports, shownNm, selected, rxLat, rxLon, onSelect = { selected = it })
             if (blips.isEmpty()) {
                 Text(
                     if (r.aircraft.isEmpty()) "Listening… no aircraft heard yet."
                     else "Aircraft heard, but none has sent its position yet.",
                     style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = DarkPalette.textSecondary,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 32.dp, vertical = 8.dp),
                 )
             }
@@ -213,8 +215,8 @@ private fun RadarCanvas(
 ) {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val ringColor = Brand.Outline
-    val labelColor = Brand.TextSecondary
+    val ringColor = DarkPalette.outline
+    val labelColor = DarkPalette.textSecondary
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
@@ -273,8 +275,8 @@ private fun RadarCanvas(
                 }
             }
             // The receiver.
-            drawCircle(Brand.Green, 3.dp.toPx(), center)
-            drawCircle(Brand.Green, 7.dp.toPx(), center, style = Stroke(1.dp.toPx()))
+            drawCircle(DarkPalette.green, 3.dp.toPx(), center)
+            drawCircle(DarkPalette.green, 7.dp.toPx(), center, style = Stroke(1.dp.toPx()))
             for ((blip, p) in placed.asReversed()) drawAircraft(blip, p, icon, blip.aircraft.hex == selected)
             // Aircraft labels keep clear of the ring labels and the receiver; airport codes keep clear
             // of those and of the aircraft and their labels, and are the ones left out when space runs out.
@@ -310,7 +312,7 @@ private fun DrawScope.drawRings(
     drawLine(ringColor.copy(alpha = 0.6f), Offset(center.x - radius, center.y), Offset(center.x + radius, center.y), 1f)
     val compass = TextStyle(color = labelColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     listOf("N" to 0.0, "E" to 90.0, "S" to 180.0, "W" to 270.0).forEach { (text, bearing) ->
-        val layout = measurer.measure(text, if (text == "N") compass.copy(color = Brand.Green) else compass)
+        val layout = measurer.measure(text, if (text == "N") compass.copy(color = DarkPalette.green) else compass)
         val a = Math.toRadians(bearing)
         val gap = 11.dp.toPx()
         val p = Offset(center.x + ((radius + gap) * sin(a)).toFloat(), center.y - ((radius + gap) * cos(a)).toFloat())
@@ -328,8 +330,8 @@ private fun DrawScope.drawCoverage(rangeNm: List<Double>, toScreen: (Double, Dou
         if (i == 0) shape.moveTo(p.x, p.y) else shape.lineTo(p.x, p.y)
     }
     shape.close()
-    drawPath(shape, Brand.Green.copy(alpha = 0.06f))
-    drawPath(shape, Brand.Green.copy(alpha = 0.3f), style = Stroke(1.dp.toPx()))
+    drawPath(shape, DarkPalette.green.copy(alpha = 0.06f))
+    drawPath(shape, DarkPalette.green.copy(alpha = 0.3f), style = Stroke(1.dp.toPx()))
 }
 
 private fun DrawScope.drawAircraft(blip: Blip, p: Offset, icon: Path, selected: Boolean) {
@@ -372,13 +374,13 @@ private fun DrawScope.drawLabels(
         // The selected aircraft's label starts outside its 14 dp ring.
         val gap = (if (a.hex == selected) 17.dp else 11.dp).toPx()
         val text = buildAnnotatedString {
-            withStyle(SpanStyle(color = if (a.hex == selected) Color.White else Brand.Text, fontSize = 12.sp,
+            withStyle(SpanStyle(color = if (a.hex == selected) Color.White else DarkPalette.text, fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold, shadow = shadow)) {
                 append(a.callsign ?: a.hex.uppercase(Locale.US))
             }
             altitudeText(a)?.let {
                 append("\n")
-                withStyle(SpanStyle(color = Brand.TextSecondary, fontSize = 11.sp, shadow = shadow)) { append(it) }
+                withStyle(SpanStyle(color = DarkPalette.textSecondary, fontSize = 11.sp, shadow = shadow)) { append(it) }
             }
         }
         val layout = measurer.measure(text, TextStyle(lineHeight = 13.sp))
@@ -514,10 +516,10 @@ private fun DetailCard(blip: Blip, onClose: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f),
                 )
                 // No material-icons dependency on the desktop, so a plain button rather than the phone's ✕ icon.
-                TextButton(onClick = onClose) { Text("Close") }
+                LinkButton(onClick = onClose) { Text("Close") }
             }
             Text(details(blip), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = { openUrl(Links.aircraft(a.hex)) }, modifier = Modifier.padding(top = 2.dp)) {
+            LinkButton(onClick = { openUrl(Links.aircraft(a.hex)) }, modifier = Modifier.padding(top = 2.dp)) {
                 Text("Open on the ADS-B Exchange map")
             }
         }

@@ -9,7 +9,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -149,7 +148,7 @@ fun LicensesScreen(onBack: () -> Unit) {
             val current = selected
             Text(if (current == null) "Open-source licences" else OSS_COMPONENTS[current].name,
                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            TextButton(onClick = { if (current != null) selected = null else onBack() }) { Text("Back") }
+            LinkButton(onClick = { if (current != null) selected = null else onBack() }) { Text("Back") }
         }
         val index = selected
         if (index == null) ComponentList { selected = it } else LicenseView(OSS_COMPONENTS[index])
@@ -176,7 +175,7 @@ private fun LicenseView(c: OssComponent) {
     val text = remember(c) { c.licenseFiles.mapNotNull { licenseText(it) }.joinToString("\n\n\n") }
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("${c.license} · ${c.copyright}", style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = { openUrl(c.url) }) { Text("Project page") }
+        LinkButton(onClick = { openUrl(c.url) }) { Text("Project page") }
         if (text.isNotEmpty()) Text(text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp)
     }
 }

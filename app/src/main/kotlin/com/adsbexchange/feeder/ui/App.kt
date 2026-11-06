@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -26,10 +27,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adsbexchange.feeder.BuildInfo
 import com.adsbexchange.feeder.data.FeederPaths
+import com.adsbexchange.feeder.data.Appearance
 import com.adsbexchange.feeder.data.FeederSettings
 import com.adsbexchange.feeder.data.FeederStatus
 import com.adsbexchange.feeder.data.History
@@ -102,9 +105,20 @@ fun FeederApp(engine: FeederEngine, paths: FeederPaths, updates: UpdateChecker? 
         }
     }
 
-    FeederTheme {
+    // Settings > Appearance; Match Windows follows Windows' app mode as it changes.
+    var appearance by remember { mutableStateOf(FeederSettings.load(paths).appearance) }
+    var windowsLight by remember { mutableStateOf(windowsAppsUseLight()) }
+    LaunchedEffect(appearance) {
+        while (appearance == Appearance.WINDOWS) {
+            windowsLight = withContext(Dispatchers.IO) { windowsAppsUseLight() }
+            delay(5_000)
+        }
+    }
+    val light = appearance == Appearance.LIGHT || (appearance == Appearance.WINDOWS && windowsLight)
+
+    FeederTheme(if (light) LightPalette else DarkPalette) {
         // The Surface sets the default text colour; outside one, Text is black.
-        Surface(Modifier.fillMaxSize(), color = Brand.Black, contentColor = Brand.Text) {
+        Surface(Modifier.fillMaxSize(), color = Brand.Page, contentColor = Brand.Text) {
             Column(Modifier.fillMaxSize()) {
                 BrandHeader()
                 // A newer version, on every tab, until downloaded or put off ("Not now").
@@ -116,9 +130,14 @@ fun FeederApp(engine: FeederEngine, paths: FeederPaths, updates: UpdateChecker? 
                         FeederSettings.update(paths) { it.copy(dismissedUpdate = update.version) }
                     })
                 }
-                PrimaryTabRow(selectedTabIndex = page.ordinal, containerColor = Brand.Black) {
+                PrimaryTabRow(selectedTabIndex = page.ordinal, containerColor = Brand.Page, contentColor = Brand.Green,
+                    indicator = {
+                        TabRowDefaults.PrimaryIndicator(Modifier.tabIndicatorOffset(page.ordinal, matchContentSize = true), width = Dp.Unspecified,
+                            color = Brand.Green)
+                    }) {
                     Page.entries.forEach { p ->
-                        Tab(selected = page == p, onClick = { page = p }, text = { Text(p.title) })
+                        Tab(selected = page == p, onClick = { page = p }, text = { Text(p.title) },
+                            unselectedContentColor = Brand.TextSecondary)
                     }
                 }
                 Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -151,7 +170,7 @@ fun FeederApp(engine: FeederEngine, paths: FeederPaths, updates: UpdateChecker? 
                                 historyRefresh++
                             },
                         )
-                        Page.SETTINGS -> SettingsScreen(paths, updates)
+                        Page.SETTINGS -> SettingsScreen(paths, updates, onAppearance = { appearance = it })
                     }
                 }
             }

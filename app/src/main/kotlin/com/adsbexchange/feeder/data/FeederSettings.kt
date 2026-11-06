@@ -143,6 +143,8 @@ data class FeederSettings(
     val radarRangeNm: Int = 0,
     /** Show nearby airports on the radar ([Airports]). */
     val radarAirports: Boolean = true,
+    /** Settings > Appearance: the app's look. Dark, its own, to start with. */
+    val appearance: Appearance = Appearance.DARK,
 ) {
     /**
      * readsb's command line.
@@ -225,6 +227,7 @@ data class FeederSettings(
         .put("altitudeUnit", altitudeUnit?.symbol ?: JSONObject.NULL)
         .put("radarRangeNm", radarRangeNm)
         .put("radarAirports", radarAirports)
+        .put("appearance", appearance.key)
 
     companion object {
         const val ADSBX_HOST = "feed1.adsbexchange.com"
@@ -331,6 +334,7 @@ data class FeederSettings(
                 altitudeUnit = AltitudeUnit.ofSymbol(o.optString("altitudeUnit").takeIf { !o.isNull("altitudeUnit") }),
                 radarRangeNm = o.optInt("radarRangeNm", 0),
                 radarAirports = o.optBoolean("radarAirports", true),
+                appearance = Appearance.ofKey(o.optString("appearance")),
             )
         }
 
