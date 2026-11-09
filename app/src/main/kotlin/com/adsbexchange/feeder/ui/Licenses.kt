@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -157,7 +155,7 @@ fun LicensesScreen(onBack: () -> Unit) {
 
 @Composable
 private fun ComponentList(onSelect: (Int) -> Unit) {
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScrollingColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("This app is built from these open-source components. Select one to read its licence.",
             style = MaterialTheme.typography.bodyMedium)
         OSS_COMPONENTS.forEachIndexed { i, c ->
@@ -173,7 +171,7 @@ private fun ComponentList(onSelect: (Int) -> Unit) {
 @Composable
 private fun LicenseView(c: OssComponent) {
     val text = remember(c) { c.licenseFiles.mapNotNull { licenseText(it) }.joinToString("\n\n\n") }
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    ScrollingColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("${c.license} · ${c.copyright}", style = MaterialTheme.typography.bodyMedium)
         LinkButton(onClick = { openUrl(c.url) }) { Text("Project page") }
         if (text.isNotEmpty()) Text(text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp)

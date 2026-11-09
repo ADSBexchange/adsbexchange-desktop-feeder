@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -162,8 +160,8 @@ fun RadarScreen(
             // A desktop window: the radar as large as the height allows, the rest beside it.
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 radar(Modifier.weight(1f).fillMaxHeight())
-                Column(
-                    Modifier.width(320.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
+                ScrollingColumn(
+                    Modifier.width(320.dp).fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     panel(this)

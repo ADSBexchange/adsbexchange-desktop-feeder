@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -58,7 +56,7 @@ fun HistoryScreen(
     onResetRange: () -> Unit,
 ) {
     val h = history?.takeIf { it.firstFedMs != null }
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    ScrollingColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (h == null) {
             SectionCard("Your contribution") {
                 Text("Your history starts the first time this PC feeds ADS-B Exchange. Everything it contributes " +
