@@ -27,7 +27,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adsbexchange.feeder.BuildInfo
 import com.adsbexchange.feeder.data.AltitudeUnit
+import com.adsbexchange.feeder.data.Appearance
 import com.adsbexchange.feeder.data.FeedState
 import com.adsbexchange.feeder.data.FeedWatchdog
 import com.adsbexchange.feeder.data.FeederPaths
@@ -126,7 +126,7 @@ fun StatusScreen(
         if (settings.location == null) {
             SectionCard("Set your receiver's position") {
                 Text("readsb needs it to place aircraft, and MLAT needs it accurate to 15 m.", color = Brand.TextSecondary)
-                TextButton(onClick = onOpenSettings) { Text("Open Settings") }
+                LinkButton(onClick = onOpenSettings) { Text("Open Settings") }
             }
         }
         settings.mlatAltitudeM()?.takeIf { settings.altitudeNeedsCheck() }?.let { m ->
@@ -160,7 +160,7 @@ fun StatusScreen(
             }
         }
         if (usage != null) ResourcesCard(usage, feeding = status.state == State.RUNNING && status.feeding)
-        TextButton(onClick = { openFolder(paths.root) }) { Text("Open the log folder") }
+        LinkButton(onClick = { openFolder(paths.root) }) { Text("Open the log folder") }
     }
 }
 
@@ -188,6 +188,7 @@ private fun ResourcesCard(usage: ResourceMonitor.Usage, feeding: Boolean) {
 
 private data class Headline(val text: String, val detail: String?, val color: Color)
 
+@Composable
 private fun describe(s: FeederStatus): Headline = when {
     // A crash loop: shown through its restarts (including the brief runs between them) until a run
     // stays up or the feed connects. readsb's last line is in the card below.
@@ -200,6 +201,7 @@ private fun describe(s: FeederStatus): Headline = when {
     else -> describeState(s)
 }
 
+@Composable
 private fun describeState(s: FeederStatus): Headline = when (s.state) {
     State.RUNNING -> when {
         !s.feeding -> Headline("Receiving (not feeding)", "Feeding ADS-B Exchange is off in Settings.", Brand.Warn)
@@ -295,7 +297,7 @@ private data class SettingsForm(
     val lat: String, val lon: String, val alt: String, val altUnit: AltitudeUnit, val confirmed: Boolean,
     val name: String, val feed: Boolean, val mlat: Boolean, val privacy: Boolean, val startWithWindows: Boolean,
     val feedAlerts: Boolean, val feedOnBattery: Boolean, val statsOnMetered: Boolean, val gain: String,
-    val biasTee: Boolean,
+    val biasTee: Boolean, val appearance: Appearance,
 ) {
     companion object {
         fun of(s: FeederSettings): SettingsForm {
@@ -305,7 +307,7 @@ private data class SettingsForm(
                 alt = s.mlatAltitudeM()?.let { unit.fieldText(it) } ?: "", altUnit = unit, confirmed = s.antennaConfirmed,
                 name = s.name, feed = s.feedAdsbx, mlat = s.mlatEnabled, privacy = s.mlatPrivacy,
                 startWithWindows = s.startWithWindows, feedAlerts = s.feedAlerts, feedOnBattery = s.feedOnBattery,
-                statsOnMetered = s.statsOnMetered, gain = s.gain, biasTee = s.biasTee,
+                statsOnMetered = s.statsOnMetered, gain = s.gain, biasTee = s.biasTee, appearance = s.appearance,
             )
         }
     }
@@ -330,15 +332,15 @@ private fun SaveBar(unsaved: Boolean, note: String?, problem: String?, onSave: (
             (problem ?: note)?.let { Text(it, color = if (problem != null) Brand.Warn else Brand.Text, fontSize = 13.sp) }
         }
         if (unsaved) {
-            TextButton(onClick = onDiscard) { Text("Discard") }
+            LinkButton(onClick = onDiscard) { Text("Discard") }
             Button(onClick = onSave,
-                colors = ButtonDefaults.buttonColors(containerColor = Brand.Green, contentColor = Brand.Black)) { Text("Save") }
+                colors = ButtonDefaults.buttonColors(containerColor = Brand.GreenFill, contentColor = Brand.OnGreen)) { Text("Save") }
         }
     }
 }
 
 @Composable
-fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
+fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppearance: (Appearance) -> Unit = {}) {
     val saved = remember { FeederSettings.load(paths) }
     // The saved settings as the fields show them; the fields differing from it means unsaved changes.
     var savedForm by remember { mutableStateOf(SettingsForm.of(saved)) }
@@ -357,6 +359,7 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
     var statsOnMetered by remember { mutableStateOf(savedForm.statsOnMetered) }
     var gain by remember { mutableStateOf(savedForm.gain) }
     var biasTee by remember { mutableStateOf(savedForm.biasTee) }
+    var appearance by remember { mutableStateOf(savedForm.appearance) }
     var note by remember { mutableStateOf<String?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var showLicenses by remember { mutableStateOf(false) }
@@ -367,10 +370,10 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
         lat = f.lat; lon = f.lon; alt = f.alt; altUnit = f.altUnit; confirmed = f.confirmed; name = f.name
         feed = f.feed; mlat = f.mlat; privacy = f.privacy; startWithWindows = f.startWithWindows
         feedAlerts = f.feedAlerts; feedOnBattery = f.feedOnBattery; statsOnMetered = f.statsOnMetered
-        gain = f.gain; biasTee = f.biasTee
+        gain = f.gain; biasTee = f.biasTee; appearance = f.appearance
     }
     val unsaved = SettingsForm(lat, lon, alt, altUnit, confirmed, name, feed, mlat, privacy, startWithWindows,
-        feedAlerts, feedOnBattery, statsOnMetered, gain, biasTee) != savedForm
+        feedAlerts, feedOnBattery, statsOnMetered, gain, biasTee, appearance) != savedForm
 
     fun save() {
         // "1,177" is 1177, not 1.177: TypedNumber reads thousands separators, and "3862 ft" is feet.
@@ -394,10 +397,11 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
                 name = FeederSettings.sanitizeName(name), feedAdsbx = feed,
                 mlatEnabled = mlat, mlatPrivacy = privacy, startWithWindows = startWithWindows,
                 feedAlerts = feedAlerts, gain = gain, biasTee = biasTee,
-                feedOnBattery = feedOnBattery, statsOnMetered = statsOnMetered,
+                feedOnBattery = feedOnBattery, statsOnMetered = statsOnMetered, appearance = appearance,
             )
         }
         Autostart.apply(startWithWindows)
+        onAppearance(appearance)
         note = when {
             gain != before.gain && biasTee != before.biasTee -> "Saved. The receiver is restarting with the new gain and bias tee."
             gain != before.gain -> "Saved. The receiver is restarting with the new gain."
@@ -420,9 +424,10 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
                     "public MLAT map shows it rounded to about 1 km, or not at all while MLAT privacy is on).",
                     color = Brand.TextSecondary)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(lat, { lat = it }, Modifier.weight(1f), label = { Text("Latitude") }, singleLine = true)
-                    OutlinedTextField(lon, { lon = it }, Modifier.weight(1f), label = { Text("Longitude") }, singleLine = true)
-                    OutlinedTextField(alt, { alt = it }, Modifier.weight(1f), label = { Text("Antenna altitude (${altUnit.symbol})") }, singleLine = true)
+                    OutlinedTextField(lat, { lat = it }, Modifier.weight(1f), label = { Text("Latitude") }, singleLine = true, colors = fieldColors())
+                    OutlinedTextField(lon, { lon = it }, Modifier.weight(1f), label = { Text("Longitude") }, singleLine = true, colors = fieldColors())
+                    OutlinedTextField(alt, { alt = it }, Modifier.weight(1f), label = { Text("Antenna altitude (${altUnit.symbol})") }, singleLine = true,
+                        colors = fieldColors())
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Altitude in", color = Brand.TextSecondary, fontSize = 13.sp)
@@ -442,7 +447,7 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
                 Text("To find them: right-click the antenna's spot in an online map; most show the latitude and " +
                     "longitude. Altitude is the ground's height above sea level plus the antenna's height above the ground.",
                     color = Brand.TextSecondary, fontSize = 13.sp)
-                TextButton(onClick = { openUrl("https://www.openstreetmap.org/") }) { Text("Open a map in the browser") }
+                LinkButton(onClick = { openUrl("https://www.openstreetmap.org/") }) { Text("Open a map in the browser") }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(confirmed, { confirmed = it })
                     Text("This position is within 15 m of the antenna (needed for MLAT)")
@@ -477,7 +482,7 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
                     "feeder's stats page, as with its Raspberry Pi feeders' stats package. That's roughly 1-10 GB a " +
                     "month, depending on how many aircraft are in range.",
                     color = Brand.TextSecondary, fontSize = 13.sp)
-                TextButton(onClick = { openUrl(StatsUploader.statsPageUrl(saved.uuid)) }) { Text("Open my stats page") }
+                LinkButton(onClick = { openUrl(StatsUploader.statsPageUrl(saved.uuid)) }) { Text("Open my stats page") }
                 Toggle("Send stats on metered connections", statsOnMetered) { statsOnMetered = it }
                 Text("Windows treats phone hotspots, and connections you've set as metered, this way. Off, the stats " +
                     "pause on them and feeding carries on.", color = Brand.TextSecondary, fontSize = 13.sp)
@@ -485,10 +490,23 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
                 Text("For laptops. Off, feeding pauses while the PC runs on its battery, and starts again by itself " +
                     "when it's plugged in.", color = Brand.TextSecondary, fontSize = 13.sp)
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true,
-                    label = { Text("Feeder name (optional)") })
+                    label = { Text("Feeder name (optional)") }, colors = fieldColors())
                 Text("Shown on ADS-B Exchange's Leaderboard and MLAT map, through MLAT, unless MLAT privacy is on. " +
                     "Leave it blank to stay anonymous (MLAT then uses desktopfeeder-${saved.uuid.take(8)}).",
                     color = Brand.TextSecondary, fontSize = 13.sp)
+            }
+            SectionCard("Appearance") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Appearance.entries.forEach { a ->
+                        FilterChip(
+                            selected = appearance == a, onClick = { appearance = a },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Brand.GreenDeep, selectedLabelColor = Brand.Green),
+                            label = { Text(a.label) },
+                        )
+                    }
+                }
+                Text("Match Windows follows Windows' app mode (Settings, Personalisation, Colours), and changes " +
+                    "with it. The radar stays dark either way.", color = Brand.TextSecondary, fontSize = 13.sp)
             }
             HelpSection(paths)
             AboutSection(saved.uuid, onShowLicenses = { showLicenses = true }) {
@@ -544,6 +562,7 @@ private fun GainSelect(value: String, onChange: (String) -> Unit) {
             gainLabel(value), {}, readOnly = true, singleLine = true, label = { Text("Gain") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
             modifier = Modifier.width(300.dp).menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+            colors = fieldColors(),
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { g ->
@@ -569,7 +588,7 @@ private fun FeederIdRow(uuid: String) {
     LaunchedEffect(result) { if (result != null) { delay(2_000); result = null } }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Feeder ID: $uuid", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Brand.TextSecondary)
-        TextButton(onClick = {
+        LinkButton(onClick = {
             result = if (runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(uuid), null) }.isSuccess)
                 "Copied" else "Couldn't copy; try again"
         }) { Text(result ?: "Copy to clipboard") }

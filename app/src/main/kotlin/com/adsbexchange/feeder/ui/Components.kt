@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,7 +19,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -72,6 +76,25 @@ fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
 fun StatusDot(color: Color, modifier: Modifier = Modifier) {
     Box(modifier.size(10.dp).background(color, CircleShape))
 }
+
+/**
+ * A text button in the palette's text green. Material's own would use `primary`, the brand green
+ * fill, which is too faint to read as text in the light look (Theme.kt).
+ */
+@Composable
+fun LinkButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) = TextButton(onClick, modifier, enabled, colors = ButtonDefaults.textButtonColors(contentColor = Brand.Green),
+    content = content)
+
+/** A text field's colours, focused in the palette's text green, for the same reason as [LinkButton]. */
+@Composable
+fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = Brand.Green, focusedLabelColor = Brand.Green, cursorColor = Brand.Green,
+)
 
 /** A dot and a line of text: the state of something, coloured by how it's going. */
 @Composable
