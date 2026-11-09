@@ -473,10 +473,10 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
             SectionCard("Feeding") {
                 Toggle("Feed ADS-B Exchange", feed) { feed = it }
                 Toggle("Take part in MLAT", mlat) { mlat = it }
-                Toggle("MLAT privacy (hide my location on the public MLAT map)", privacy) { privacy = it }
-                Text("Still takes part in MLAT. Off, ADS-B Exchange's MLAT map shows your feeder at an approximate " +
-                    "location (rounded to about 1 km). On, it shows no location, though your feeder name can still appear " +
-                    "in its lists.", color = Brand.TextSecondary, fontSize = 13.sp)
+                Toggle("MLAT privacy (hide this feeder from the public MLAT map and the Leaderboard)", privacy) { privacy = it }
+                Text("Still takes part in MLAT. Off, your feeder is listed on ADS-B Exchange's Leaderboard, and its " +
+                    "MLAT map shows it at an approximate location (rounded to about 1 km). On, the map shows no " +
+                    "location and the feeder isn't listed on the Leaderboard.", color = Brand.TextSecondary, fontSize = 13.sp)
                 Toggle("Start with Windows (in the notification area)", startWithWindows) { startWithWindows = it }
                 Toggle("Alert me if feeding stops", feedAlerts) { feedAlerts = it }
                 Text("If this PC can't reach ADS-B Exchange for 15 minutes, hears no aircraft for 2 hours, or the " +
@@ -494,8 +494,8 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
                     "when it's plugged in.", color = Brand.TextSecondary, fontSize = 13.sp)
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true,
                     label = { Text("Feeder name (optional)") }, colors = fieldColors())
-                Text("Shown on ADS-B Exchange's Leaderboard and MLAT maps, through MLAT. Leave it blank to stay " +
-                    "anonymous (MLAT then uses desktopfeeder-${saved.uuid.take(8)}).",
+                Text("Shown on ADS-B Exchange's Leaderboard and MLAT map, through MLAT, unless MLAT privacy is on. " +
+                    "Leave it blank to stay anonymous (MLAT then uses desktopfeeder-${saved.uuid.take(8)}).",
                     color = Brand.TextSecondary, fontSize = 13.sp)
             }
             SectionCard("Appearance") {
@@ -612,9 +612,10 @@ private fun AboutSection(uuid: String, onShowLicenses: () -> Unit, updates: @Com
         Text("What ADS-B Exchange receives", style = MaterialTheme.typography.titleSmall)
         Text("ADS-B Exchange receives the aircraft messages this PC hears, with a feeder ID that marks this as a " +
             "desktop feeder. With MLAT on, it also receives the position you entered, the antenna altitude and your " +
-            "feeder name, which MLAT needs to work out aircraft positions. ADS-B Exchange's public MLAT map lists " +
-            "feeders by name; with privacy off, it also shows your feeder at an approximate location, rounded to about " +
-            "1 km, never the precise one. Privacy is off to start with. For your stats page, it also receives the list of aircraft this PC hears " +
+            "feeder name, which MLAT needs to work out aircraft positions. With MLAT privacy off, ADS-B Exchange's " +
+            "Leaderboard and public MLAT map list your feeder by name, and the map shows it at an approximate location, " +
+            "rounded to about 1 km, never the precise one; with it on, the feeder is left off both. Privacy is off " +
+            "to start with. For your stats page, it also receives the list of aircraft this PC hears " +
             "every 5 seconds; each aircraft's distance and direction from the receiver are only included while " +
             "MLAT is on, since they reveal where the receiver is. The position isn't sent to anyone other than " +
             "ADS-B Exchange.",

@@ -236,8 +236,8 @@ private fun MlatBlock(
         DetailRow("MLAT messages sent", Format.count(m.mlatSent))
         m.outlierPercent?.let { DetailRow("Sync outliers", "%.1f%%".format(Locale.US, it)) }
         DetailRow("Sent to the MLAT server", Format.bytes(m.bytesSent))
-        DetailRow("Shown on the Leaderboard and MLAT maps as",
-            if (settings.mlatPrivacy) "${settings.mlatUser()} (location hidden on the MLAT map)" else settings.mlatUser())
+        if (settings.mlatPrivacy) DetailRow("Leaderboard and MLAT map", "Not listed (MLAT privacy is on)")
+        else DetailRow("Shown on the Leaderboard and MLAT map as", settings.mlatUser())
         Row {
             LinkButton(onClick = { openUrl(Links.MLAT_SYNC) }) { Text("MLAT sync status") }
             if (!settings.mlatPrivacy) LinkButton(onClick = { openUrl(Links.MLAT_MAP) }) { Text("MLAT map") }
