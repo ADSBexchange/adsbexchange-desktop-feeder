@@ -10,13 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +56,7 @@ fun HistoryScreen(
     onResetRange: () -> Unit,
 ) {
     val h = history?.takeIf { it.firstFedMs != null }
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    ScrollingColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (h == null) {
             SectionCard("Your contribution") {
                 Text("Your history starts the first time this PC feeds ADS-B Exchange. Everything it contributes " +
@@ -87,8 +84,8 @@ fun HistoryScreen(
                 (if (statsPageUrl != null) " and your stats page." else "."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row {
-                TextButton(onClick = { openUrl(Links.LEADERBOARD) }) { Text("View the Leaderboard") }
-                statsPageUrl?.let { url -> TextButton(onClick = { openUrl(url) }) { Text("My stats page") } }
+                LinkButton(onClick = { openUrl(Links.LEADERBOARD) }) { Text("View the Leaderboard") }
+                statsPageUrl?.let { url -> LinkButton(onClick = { openUrl(url) }) { Text("My stats page") } }
             }
         }
     }
@@ -160,15 +157,15 @@ private fun RangeCard(rangeNm: List<Double>, sinceMs: Long?, onReset: () -> Unit
             else "Builds up as aircraft are heard.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (any) TextButton(onClick = { confirm = true }) { Text("Reset") }
+        if (any) LinkButton(onClick = { confirm = true }) { Text("Reset") }
     }
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
             title = { Text("Reset the range plot?") },
             text = { Text("It starts again from now, for example after you've moved the antenna. The rest of your history stays.") },
-            confirmButton = { TextButton(onClick = { confirm = false; onReset() }) { Text("Reset") } },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+            confirmButton = { LinkButton(onClick = { confirm = false; onReset() }) { Text("Reset") } },
+            dismissButton = { LinkButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
     }
 }

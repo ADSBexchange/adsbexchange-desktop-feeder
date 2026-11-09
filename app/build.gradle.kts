@@ -9,7 +9,7 @@ plugins {
 }
 
 // The app's version, in the MSI and the launcher.
-val appVersion = "0.5.23"
+val appVersion = "0.5.24"
 
 // The commit this build came from, shown under Settings > About and in the log so an installed
 // build can be matched to its source; "-dirty" if tracked files had uncommitted changes, "unknown"
@@ -119,8 +119,12 @@ compose.desktop {
             description = "Feeds ADS-B Exchange from an RTL-SDR stick"
             vendor = "ADS-B Exchange"
             // From :app:suggestRuntimeModules (jdk.unsupported is for JNA), plus java.net.http for the
-            // stats uploads (StatsUploader; jdk.crypto.ec, which its TLS needs, is in Compose's defaults).
-            modules("java.instrument", "jdk.unsupported", "java.net.http")
+            // stats uploads (StatsUploader; jdk.crypto.ec, which its TLS needs, is in Compose's defaults),
+            // and jdk.accessibility: Java Access Bridge, for screen readers. Where it's switched on
+            // (.accessibility.properties in the user's folder, written by jabswitch -enable), Java
+            // loads it at startup, and without it the app stopped with "Assistive Technology not
+            // found" before showing anything (0.5.23 and earlier).
+            modules("java.instrument", "jdk.unsupported", "java.net.http", "jdk.accessibility")
             windows {
                 // The launcher's icon. tools/icon/MakeIcon.java draws it from the app's icon.svg.
                 iconFile.set(project.file("icons/icon.ico"))

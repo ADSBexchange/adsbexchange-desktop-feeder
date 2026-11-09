@@ -6,7 +6,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -155,7 +154,7 @@ fun LiveFeedCard(
                 "${settings.uuid.take(8)} (full ID in Settings).",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        TextButton(onClick = onShowAircraft) { Text("See aircraft") }
+        LinkButton(onClick = onShowAircraft) { Text("See aircraft") }
     }
 }
 
@@ -192,7 +191,7 @@ private fun StatsBlock(status: FeederStatus, settings: FeederSettings) {
     }
     StatusLine(color, text)
     if (s.uploads > 0) DetailRow("Stats sent this session", Format.bytes(s.bytesSent))
-    TextButton(onClick = { openUrl(StatsUploader.statsPageUrl(settings.uuid)) }) { Text("My stats page") }
+    LinkButton(onClick = { openUrl(StatsUploader.statsPageUrl(settings.uuid)) }) { Text("My stats page") }
 }
 
 /** MLAT part of the Live feed card: state, sync with nearby feeders, and what it's sending. */
@@ -237,11 +236,11 @@ private fun MlatBlock(
         DetailRow("MLAT messages sent", Format.count(m.mlatSent))
         m.outlierPercent?.let { DetailRow("Sync outliers", "%.1f%%".format(Locale.US, it)) }
         DetailRow("Sent to the MLAT server", Format.bytes(m.bytesSent))
-        DetailRow("Shown on the Leaderboard and MLAT maps as",
-            if (settings.mlatPrivacy) "${settings.mlatUser()} (location hidden on the MLAT map)" else settings.mlatUser())
+        if (settings.mlatPrivacy) DetailRow("Leaderboard and MLAT map", "Not listed (MLAT privacy is on)")
+        else DetailRow("Shown on the Leaderboard and MLAT map as", settings.mlatUser())
         Row {
-            TextButton(onClick = { openUrl(Links.MLAT_SYNC) }) { Text("MLAT sync status") }
-            if (!settings.mlatPrivacy) TextButton(onClick = { openUrl(Links.MLAT_MAP) }) { Text("MLAT map") }
+            LinkButton(onClick = { openUrl(Links.MLAT_SYNC) }) { Text("MLAT sync status") }
+            if (!settings.mlatPrivacy) LinkButton(onClick = { openUrl(Links.MLAT_MAP) }) { Text("MLAT map") }
         }
     }
 }

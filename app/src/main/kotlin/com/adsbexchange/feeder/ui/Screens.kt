@@ -1,18 +1,19 @@
 package com.adsbexchange.feeder.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,7 +27,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adsbexchange.feeder.BuildInfo
 import com.adsbexchange.feeder.data.AltitudeUnit
+import com.adsbexchange.feeder.data.Appearance
 import com.adsbexchange.feeder.data.FeedState
 import com.adsbexchange.feeder.data.FeedWatchdog
 import com.adsbexchange.feeder.data.FeederPaths
@@ -53,12 +54,14 @@ import com.adsbexchange.feeder.data.FeederStatus.DriverSetup
 import com.adsbexchange.feeder.data.FeederStatus.Reason
 import com.adsbexchange.feeder.data.FeederStatus.State
 import com.adsbexchange.feeder.data.MLAT_ALTITUDE_RANGE_M
+import com.adsbexchange.feeder.data.MlatReadiness
 import com.adsbexchange.feeder.data.ReceiverStatus
 import com.adsbexchange.feeder.data.RestartBudget
 import com.adsbexchange.feeder.data.StationLocation
 import com.adsbexchange.feeder.data.TypedNumber
 import com.adsbexchange.feeder.data.altitudeNeedsCheck
 import com.adsbexchange.feeder.data.mlatAltitudeM
+import com.adsbexchange.feeder.data.mlatReadiness
 import com.adsbexchange.feeder.data.shownAltitudeUnit
 import com.adsbexchange.feeder.service.Autostart
 import com.adsbexchange.feeder.service.ResourceMonitor
@@ -89,7 +92,7 @@ fun StatusScreen(
     val settings = remember(status, settingsVersion) { FeederSettings.load(paths) }
     val (headline, detail, color) = describe(status)
     val needsDriver = status.state == State.STARTING && status.reason == Reason.NEEDS_DRIVER
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScrollingColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionCard(null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StatusDot(color)
@@ -123,7 +126,7 @@ fun StatusScreen(
         if (settings.location == null) {
             SectionCard("Set your receiver's position") {
                 Text("readsb needs it to place aircraft, and MLAT needs it accurate to 15 m.", color = Brand.TextSecondary)
-                TextButton(onClick = onOpenSettings) { Text("Open Settings") }
+                LinkButton(onClick = onOpenSettings) { Text("Open Settings") }
             }
         }
         settings.mlatAltitudeM()?.takeIf { settings.altitudeNeedsCheck() }?.let { m ->
@@ -157,7 +160,7 @@ fun StatusScreen(
             }
         }
         if (usage != null) ResourcesCard(usage, feeding = status.state == State.RUNNING && status.feeding)
-        TextButton(onClick = { openFolder(paths.root) }) { Text("Open the log folder") }
+        LinkButton(onClick = { openFolder(paths.root) }) { Text("Open the log folder") }
     }
 }
 
@@ -185,6 +188,7 @@ private fun ResourcesCard(usage: ResourceMonitor.Usage, feeding: Boolean) {
 
 private data class Headline(val text: String, val detail: String?, val color: Color)
 
+@Composable
 private fun describe(s: FeederStatus): Headline = when {
     // A crash loop: shown through its restarts (including the brief runs between them) until a run
     // stays up or the feed connects. readsb's last line is in the card below.
@@ -197,6 +201,7 @@ private fun describe(s: FeederStatus): Headline = when {
     else -> describeState(s)
 }
 
+@Composable
 private fun describeState(s: FeederStatus): Headline = when (s.state) {
     State.RUNNING -> when {
         !s.feeding -> Headline("Receiving (not feeding)", "Feeding ADS-B Exchange is off in Settings.", Brand.Warn)
@@ -243,7 +248,7 @@ fun AircraftScreen(receiver: ReceiverStatus?) {
         Text("No aircraft yet.", color = Brand.TextSecondary)
         return
     }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    ScrollingLazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
             Text("Click an aircraft to see it on the ADS-B Exchange map.", color = Brand.TextSecondary,
                 fontSize = 13.sp, modifier = Modifier.padding(bottom = 4.dp))
@@ -287,149 +292,235 @@ private fun altitudeOutOfRange(m: Double): String =
         "If you typed it in feet, choose feet."
     else "${AltitudeUnit.describe(m)} is lower than MLAT can use."
 
+/** What Settings' fields hold, as typed: compared with the saved settings' to show the save bar. */
+private data class SettingsForm(
+    val lat: String, val lon: String, val alt: String, val altUnit: AltitudeUnit, val confirmed: Boolean,
+    val name: String, val feed: Boolean, val mlat: Boolean, val privacy: Boolean, val startWithWindows: Boolean,
+    val feedAlerts: Boolean, val feedOnBattery: Boolean, val statsOnMetered: Boolean, val gain: String,
+    val biasTee: Boolean, val appearance: Appearance,
+) {
+    companion object {
+        fun of(s: FeederSettings): SettingsForm {
+            val unit = s.shownAltitudeUnit()
+            return SettingsForm(
+                lat = s.location?.lat?.toString() ?: "", lon = s.location?.lon?.toString() ?: "",
+                alt = s.mlatAltitudeM()?.let { unit.fieldText(it) } ?: "", altUnit = unit, confirmed = s.antennaConfirmed,
+                name = s.name, feed = s.feedAdsbx, mlat = s.mlatEnabled, privacy = s.mlatPrivacy,
+                startWithWindows = s.startWithWindows, feedAlerts = s.feedAlerts, feedOnBattery = s.feedOnBattery,
+                statsOnMetered = s.statsOnMetered, gain = s.gain, biasTee = s.biasTee, appearance = s.appearance,
+            )
+        }
+    }
+}
+
+/**
+ * Settings' save bar, below the scrolling sections so it's always in view: shown while a field
+ * differs from what's saved, with what saving did for a few seconds after, and why it couldn't.
+ * The Save button used to sit below all the sections, far from the position at the top, and
+ * nothing said a change wasn't saved yet.
+ */
 @Composable
-fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null) {
+private fun SaveBar(unsaved: Boolean, note: String?, problem: String?, onSave: () -> Unit, onDiscard: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp).background(Brand.GreenDeep, RoundedCornerShape(8.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            if (unsaved) Text("You have unsaved changes", color = Brand.Green, fontWeight = FontWeight.SemiBold)
+            (problem ?: note)?.let { Text(it, color = if (problem != null) Brand.Warn else Brand.Text, fontSize = 13.sp) }
+        }
+        if (unsaved) {
+            LinkButton(onClick = onDiscard) { Text("Discard") }
+            Button(onClick = onSave,
+                colors = ButtonDefaults.buttonColors(containerColor = Brand.GreenFill, contentColor = Brand.OnGreen)) { Text("Save") }
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppearance: (Appearance) -> Unit = {}) {
     val saved = remember { FeederSettings.load(paths) }
-    var lat by remember { mutableStateOf(saved.location?.lat?.toString() ?: "") }
-    var lon by remember { mutableStateOf(saved.location?.lon?.toString() ?: "") }
-    var altUnit by remember { mutableStateOf(saved.shownAltitudeUnit()) }
-    var alt by remember { mutableStateOf(saved.mlatAltitudeM()?.let { altUnit.fieldText(it) } ?: "") }
-    var confirmed by remember { mutableStateOf(saved.antennaConfirmed) }
-    var name by remember { mutableStateOf(saved.name) }
-    var feed by remember { mutableStateOf(saved.feedAdsbx) }
-    var mlat by remember { mutableStateOf(saved.mlatEnabled) }
-    var privacy by remember { mutableStateOf(saved.mlatPrivacy) }
-    var startWithWindows by remember { mutableStateOf(saved.startWithWindows) }
-    var feedAlerts by remember { mutableStateOf(saved.feedAlerts) }
-    var feedOnBattery by remember { mutableStateOf(saved.feedOnBattery) }
-    var statsOnMetered by remember { mutableStateOf(saved.statsOnMetered) }
-    var gain by remember { mutableStateOf(saved.gain) }
-    var biasTee by remember { mutableStateOf(saved.biasTee) }
-    var message by remember { mutableStateOf<String?>(null) }
+    // The saved settings as the fields show them; the fields differing from it means unsaved changes.
+    var savedForm by remember { mutableStateOf(SettingsForm.of(saved)) }
+    var lat by remember { mutableStateOf(savedForm.lat) }
+    var lon by remember { mutableStateOf(savedForm.lon) }
+    var altUnit by remember { mutableStateOf(savedForm.altUnit) }
+    var alt by remember { mutableStateOf(savedForm.alt) }
+    var confirmed by remember { mutableStateOf(savedForm.confirmed) }
+    var name by remember { mutableStateOf(savedForm.name) }
+    var feed by remember { mutableStateOf(savedForm.feed) }
+    var mlat by remember { mutableStateOf(savedForm.mlat) }
+    var privacy by remember { mutableStateOf(savedForm.privacy) }
+    var startWithWindows by remember { mutableStateOf(savedForm.startWithWindows) }
+    var feedAlerts by remember { mutableStateOf(savedForm.feedAlerts) }
+    var feedOnBattery by remember { mutableStateOf(savedForm.feedOnBattery) }
+    var statsOnMetered by remember { mutableStateOf(savedForm.statsOnMetered) }
+    var gain by remember { mutableStateOf(savedForm.gain) }
+    var biasTee by remember { mutableStateOf(savedForm.biasTee) }
+    var appearance by remember { mutableStateOf(savedForm.appearance) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
     var showLicenses by remember { mutableStateOf(false) }
+    // What saving did shows for a few seconds; a problem stays until it's fixed or the changes discarded.
+    LaunchedEffect(note) { if (note != null) { delay(5_000); note = null } }
+
+    fun show(f: SettingsForm) {
+        lat = f.lat; lon = f.lon; alt = f.alt; altUnit = f.altUnit; confirmed = f.confirmed; name = f.name
+        feed = f.feed; mlat = f.mlat; privacy = f.privacy; startWithWindows = f.startWithWindows
+        feedAlerts = f.feedAlerts; feedOnBattery = f.feedOnBattery; statsOnMetered = f.statsOnMetered
+        gain = f.gain; biasTee = f.biasTee; appearance = f.appearance
+    }
+    val unsaved = SettingsForm(lat, lon, alt, altUnit, confirmed, name, feed, mlat, privacy, startWithWindows,
+        feedAlerts, feedOnBattery, statsOnMetered, gain, biasTee, appearance) != savedForm
+
+    fun save() {
+        // "1,177" is 1177, not 1.177: TypedNumber reads thousands separators, and "3862 ft" is feet.
+        val la = TypedNumber.coordinate(lat)
+        val lo = TypedNumber.coordinate(lon)
+        val al = alt.takeIf { it.isNotBlank() }?.let { TypedNumber.altitude(it, altUnit) }?.let { Math.round(it * 100) / 100.0 }
+        val blank = lat.isBlank() && lon.isBlank()
+        val location = if (blank) null else la?.let { a -> lo?.let { o -> StationLocation.manual(a, o, al) } }
+        problem = when {
+            !blank && location == null -> "Latitude must be -90 to 90 and longitude -180 to 180."
+            alt.isNotBlank() && al == null ->
+                "Altitude must be a number of ${if (altUnit == AltitudeUnit.FEET) "feet" else "metres"}."
+            al != null && al !in MLAT_ALTITUDE_RANGE_M -> altitudeOutOfRange(al)
+            else -> null
+        }
+        if (problem != null) return
+        val before = FeederSettings.load(paths)
+        val after = FeederSettings.update(paths) {
+            it.copy(
+                location = location, antennaAltitudeM = al, altitudeUnit = altUnit, antennaConfirmed = confirmed,
+                name = FeederSettings.sanitizeName(name), feedAdsbx = feed,
+                mlatEnabled = mlat, mlatPrivacy = privacy, startWithWindows = startWithWindows,
+                feedAlerts = feedAlerts, gain = gain, biasTee = biasTee,
+                feedOnBattery = feedOnBattery, statsOnMetered = statsOnMetered, appearance = appearance,
+            )
+        }
+        Autostart.apply(startWithWindows)
+        onAppearance(appearance)
+        note = when {
+            gain != before.gain && biasTee != before.biasTee -> "Saved. The receiver is restarting with the new gain and bias tee."
+            gain != before.gain -> "Saved. The receiver is restarting with the new gain."
+            biasTee != before.biasTee -> "Saved. The receiver is restarting with the bias tee ${if (biasTee) "on" else "off"}."
+            after.mlatReadiness() == MlatReadiness.READY && before.mlatReadiness() != MlatReadiness.READY ->
+                "Saved. MLAT is starting."
+            else -> "Saved. Feeding on/off applies the next time feeding starts."
+        }
+        // As saved: "51,05" shows as 51.05, and the name as it's sent.
+        savedForm = SettingsForm.of(after)
+        show(savedForm)
+    }
+
     if (showLicenses) return LicensesScreen(onBack = { showLicenses = false })
 
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionCard("Receiver position") {
-            Text("Where the antenna is. It stays on this PC, except that MLAT sends it to ADS-B Exchange (whose " +
-                "public MLAT map shows it rounded to about 1 km, or not at all while MLAT privacy is on).",
-                color = Brand.TextSecondary)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(lat, { lat = it }, Modifier.weight(1f), label = { Text("Latitude") }, singleLine = true)
-                OutlinedTextField(lon, { lon = it }, Modifier.weight(1f), label = { Text("Longitude") }, singleLine = true)
-                OutlinedTextField(alt, { alt = it }, Modifier.weight(1f), label = { Text("Antenna altitude (${altUnit.symbol})") }, singleLine = true)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Altitude in", color = Brand.TextSecondary, fontSize = 13.sp)
-                AltitudeUnit.entries.forEach { u ->
-                    FilterChip(
-                        selected = altUnit == u, onClick = { altUnit = u },
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Brand.GreenDeep, selectedLabelColor = Brand.Green),
-                        label = { Text(if (u == AltitudeUnit.FEET) "feet (ft)" else "metres (m)") },
-                    )
+    Column(Modifier.fillMaxSize()) {
+        ScrollingColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionCard("Receiver position") {
+                Text("Where the antenna is. It stays on this PC, except that MLAT sends it to ADS-B Exchange (whose " +
+                    "public MLAT map shows it rounded to about 1 km, or not at all while MLAT privacy is on).",
+                    color = Brand.TextSecondary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(lat, { lat = it }, Modifier.weight(1f), label = { Text("Latitude") }, singleLine = true, colors = fieldColors())
+                    OutlinedTextField(lon, { lon = it }, Modifier.weight(1f), label = { Text("Longitude") }, singleLine = true, colors = fieldColors())
+                    OutlinedTextField(alt, { alt = it }, Modifier.weight(1f), label = { Text("Antenna altitude (${altUnit.symbol})") }, singleLine = true,
+                        colors = fieldColors())
                 }
-            }
-            // Both units as it's typed, so a height typed in the wrong one stands out.
-            alt.takeIf { it.isNotBlank() }?.let { TypedNumber.altitude(it, altUnit) }?.let { m ->
-                if (m in MLAT_ALTITUDE_RANGE_M) Text("= ${AltitudeUnit.describe(m)}", color = Brand.TextSecondary, fontSize = 13.sp)
-                else Text(altitudeOutOfRange(m), color = Brand.Warn, fontSize = 13.sp)
-            }
-            Text("To find them: right-click the antenna's spot in an online map; most show the latitude and " +
-                "longitude. Altitude is the ground's height above sea level plus the antenna's height above the ground.",
-                color = Brand.TextSecondary, fontSize = 13.sp)
-            TextButton(onClick = { openUrl("https://www.openstreetmap.org/") }) { Text("Open a map in the browser") }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(confirmed, { confirmed = it })
-                Text("This position is within 15 m of the antenna (needed for MLAT)")
-            }
-        }
-        SectionCard("Receiver gain") {
-            GainSelect(gain) { gain = it }
-            Text("Auto suits most setups: readsb adjusts the gain as conditions change. A lower setting can help " +
-                "near an airport, where strong signals swamp the stick; a higher one can pick up more distant " +
-                "aircraft. Saving a new gain restarts the receiver, which takes a few seconds.",
-                color = Brand.TextSecondary, fontSize = 13.sp)
-            Toggle("Power an amplifier through the antenna cable (bias tee)", biasTee) { biasTee = it }
-            Text("Only for an amplifier (LNA) at the antenna that takes its power through the cable, with a stick " +
-                "that can supply it (the RTL-SDR Blog V3 or V4, or a Nooelec SMArTee, say). Without it, such an " +
-                "amplifier passes little or no signal. Leave it off otherwise: it puts about 4.5 V on the antenna " +
-                "socket, which can damage an antenna or splitter that shorts it. The ADS-B Exchange stick doesn't " +
-                "need it. Saving a change restarts the receiver.",
-                color = Brand.TextSecondary, fontSize = 13.sp)
-        }
-        SectionCard("Feeding") {
-            Toggle("Feed ADS-B Exchange", feed) { feed = it }
-            Toggle("Take part in MLAT", mlat) { mlat = it }
-            Toggle("MLAT privacy (hide my location on the public MLAT map)", privacy) { privacy = it }
-            Text("Still takes part in MLAT. Off, ADS-B Exchange's MLAT map shows your feeder at an approximate " +
-                "location (rounded to about 1 km). On, it shows no location, though your feeder name can still appear " +
-                "in its lists.", color = Brand.TextSecondary, fontSize = 13.sp)
-            Toggle("Start with Windows (in the notification area)", startWithWindows) { startWithWindows = it }
-            Toggle("Alert me if feeding stops", feedAlerts) { feedAlerts = it }
-            Text("If this PC can't reach ADS-B Exchange for 15 minutes, hears no aircraft for 2 hours, or the " +
-                "RTL-SDR is unplugged.", color = Brand.TextSecondary, fontSize = 13.sp)
-            Text("While feeding, the aircraft this PC hears also go to ADS-B Exchange every 5 seconds for your " +
-                "feeder's stats page, as with its Raspberry Pi feeders' stats package. That's roughly 1-10 GB a " +
-                "month, depending on how many aircraft are in range.",
-                color = Brand.TextSecondary, fontSize = 13.sp)
-            TextButton(onClick = { openUrl(StatsUploader.statsPageUrl(saved.uuid)) }) { Text("Open my stats page") }
-            Toggle("Send stats on metered connections", statsOnMetered) { statsOnMetered = it }
-            Text("Windows treats phone hotspots, and connections you've set as metered, this way. Off, the stats " +
-                "pause on them and feeding carries on.", color = Brand.TextSecondary, fontSize = 13.sp)
-            Toggle("Keep feeding on battery", feedOnBattery) { feedOnBattery = it }
-            Text("For laptops. Off, feeding pauses while the PC runs on its battery, and starts again by itself " +
-                "when it's plugged in.", color = Brand.TextSecondary, fontSize = 13.sp)
-            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true,
-                label = { Text("Feeder name (optional)") })
-            Text("Shown on ADS-B Exchange's Leaderboard and MLAT maps, through MLAT. Leave it blank to stay " +
-                "anonymous (MLAT then uses desktopfeeder-${saved.uuid.take(8)}).",
-                color = Brand.TextSecondary, fontSize = 13.sp)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = {
-                // "1,177" is 1177, not 1.177: TypedNumber reads thousands separators, and "3862 ft" is feet.
-                val la = TypedNumber.coordinate(lat)
-                val lo = TypedNumber.coordinate(lon)
-                val al = alt.takeIf { it.isNotBlank() }?.let { TypedNumber.altitude(it, altUnit) }?.let { Math.round(it * 100) / 100.0 }
-                val blank = lat.isBlank() && lon.isBlank()
-                val location = if (blank) null else la?.let { a -> lo?.let { o -> StationLocation.manual(a, o, al) } }
-                message = when {
-                    !blank && location == null -> "Latitude must be -90 to 90 and longitude -180 to 180."
-                    alt.isNotBlank() && al == null ->
-                        "Altitude must be a number of ${if (altUnit == AltitudeUnit.FEET) "feet" else "metres"}."
-                    al != null && al !in MLAT_ALTITUDE_RANGE_M -> altitudeOutOfRange(al)
-                    else -> {
-                        val before = FeederSettings.load(paths)
-                        FeederSettings.update(paths) {
-                            it.copy(
-                                location = location, antennaAltitudeM = al, altitudeUnit = altUnit, antennaConfirmed = confirmed,
-                                name = FeederSettings.sanitizeName(name), feedAdsbx = feed,
-                                mlatEnabled = mlat, mlatPrivacy = privacy, startWithWindows = startWithWindows,
-                                feedAlerts = feedAlerts, gain = gain, biasTee = biasTee,
-                                feedOnBattery = feedOnBattery, statsOnMetered = statsOnMetered,
-                            )
-                        }
-                        Autostart.apply(startWithWindows)
-                        when {
-                            gain != before.gain && biasTee != before.biasTee -> "Saved. The receiver is restarting with the new gain and bias tee."
-                            gain != before.gain -> "Saved. The receiver is restarting with the new gain."
-                            biasTee != before.biasTee -> "Saved. The receiver is restarting with the bias tee ${if (biasTee) "on" else "off"}."
-                            else -> "Saved. Feeding on/off applies the next time feeding starts."
-                        }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Altitude in", color = Brand.TextSecondary, fontSize = 13.sp)
+                    AltitudeUnit.entries.forEach { u ->
+                        FilterChip(
+                            selected = altUnit == u, onClick = { altUnit = u },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Brand.GreenDeep, selectedLabelColor = Brand.Green),
+                            label = { Text(if (u == AltitudeUnit.FEET) "feet (ft)" else "metres (m)") },
+                        )
                     }
                 }
-            }) { Text("Save") }
-            message?.let { Text(it, color = Brand.TextSecondary) }
-        }
-        HelpSection(paths)
-        AboutSection(saved.uuid, onShowLicenses = { showLicenses = true }) {
-            if (updates != null) {
-                var check by remember { mutableStateOf(saved.checkForUpdates) }
-                UpdateSettings(updates, check) { on ->
-                    check = on
-                    FeederSettings.update(paths) { it.copy(checkForUpdates = on) }
+                // Both units as it's typed, so a height typed in the wrong one stands out.
+                alt.takeIf { it.isNotBlank() }?.let { TypedNumber.altitude(it, altUnit) }?.let { m ->
+                    if (m in MLAT_ALTITUDE_RANGE_M) Text("= ${AltitudeUnit.describe(m)}", color = Brand.TextSecondary, fontSize = 13.sp)
+                    else Text(altitudeOutOfRange(m), color = Brand.Warn, fontSize = 13.sp)
+                }
+                Text("To find them: right-click the antenna's spot in an online map; most show the latitude and " +
+                    "longitude. Altitude is the ground's height above sea level plus the antenna's height above the ground.",
+                    color = Brand.TextSecondary, fontSize = 13.sp)
+                LinkButton(onClick = { openUrl("https://www.openstreetmap.org/") }) { Text("Open a map in the browser") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(confirmed, { confirmed = it })
+                    Text("This position is within 15 m of the antenna (needed for MLAT)")
                 }
             }
+            SectionCard("Receiver gain") {
+                GainSelect(gain) { gain = it }
+                Text("Auto suits most setups: readsb adjusts the gain as conditions change. A lower setting can help " +
+                    "near an airport, where strong signals swamp the stick; a higher one can pick up more distant " +
+                    "aircraft. Saving a new gain restarts the receiver, which takes a few seconds.",
+                    color = Brand.TextSecondary, fontSize = 13.sp)
+                Toggle("Power an amplifier through the antenna cable (bias tee)", biasTee) { biasTee = it }
+                Text("Only for an amplifier (LNA) at the antenna that takes its power through the cable, with a stick " +
+                    "that can supply it (the RTL-SDR Blog V3 or V4, or a Nooelec SMArTee, say). Without it, such an " +
+                    "amplifier passes little or no signal. Leave it off otherwise: it puts about 4.5 V on the antenna " +
+                    "socket, which can damage an antenna or splitter that shorts it. The ADS-B Exchange stick doesn't " +
+                    "need it. Saving a change restarts the receiver.",
+                    color = Brand.TextSecondary, fontSize = 13.sp)
+            }
+            SectionCard("Feeding") {
+                Toggle("Feed ADS-B Exchange", feed) { feed = it }
+                Toggle("Take part in MLAT", mlat) { mlat = it }
+                Toggle("MLAT privacy (hide this feeder from the public MLAT map and the Leaderboard)", privacy) { privacy = it }
+                Text("Still takes part in MLAT. Off, your feeder is listed on ADS-B Exchange's Leaderboard, and its " +
+                    "MLAT map shows it at an approximate location (rounded to about 1 km). On, the map shows no " +
+                    "location and the feeder isn't listed on the Leaderboard.", color = Brand.TextSecondary, fontSize = 13.sp)
+                Toggle("Start with Windows (in the notification area)", startWithWindows) { startWithWindows = it }
+                Toggle("Alert me if feeding stops", feedAlerts) { feedAlerts = it }
+                Text("If this PC can't reach ADS-B Exchange for 15 minutes, hears no aircraft for 2 hours, or the " +
+                    "RTL-SDR is unplugged.", color = Brand.TextSecondary, fontSize = 13.sp)
+                Text("While feeding, the aircraft this PC hears also go to ADS-B Exchange every 5 seconds for your " +
+                    "feeder's stats page, as with its Raspberry Pi feeders' stats package. That's roughly 1-10 GB a " +
+                    "month, depending on how many aircraft are in range.",
+                    color = Brand.TextSecondary, fontSize = 13.sp)
+                LinkButton(onClick = { openUrl(StatsUploader.statsPageUrl(saved.uuid)) }) { Text("Open my stats page") }
+                Toggle("Send stats on metered connections", statsOnMetered) { statsOnMetered = it }
+                Text("Windows treats phone hotspots, and connections you've set as metered, this way. Off, the stats " +
+                    "pause on them and feeding carries on.", color = Brand.TextSecondary, fontSize = 13.sp)
+                Toggle("Keep feeding on battery", feedOnBattery) { feedOnBattery = it }
+                Text("For laptops. Off, feeding pauses while the PC runs on its battery, and starts again by itself " +
+                    "when it's plugged in.", color = Brand.TextSecondary, fontSize = 13.sp)
+                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true,
+                    label = { Text("Feeder name (optional)") }, colors = fieldColors())
+                Text("Shown on ADS-B Exchange's Leaderboard and MLAT map, through MLAT, unless MLAT privacy is on. " +
+                    "Leave it blank to stay anonymous (MLAT then uses desktopfeeder-${saved.uuid.take(8)}).",
+                    color = Brand.TextSecondary, fontSize = 13.sp)
+            }
+            SectionCard("Appearance") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Appearance.entries.forEach { a ->
+                        FilterChip(
+                            selected = appearance == a, onClick = { appearance = a },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Brand.GreenDeep, selectedLabelColor = Brand.Green),
+                            label = { Text(a.label) },
+                        )
+                    }
+                }
+                Text("Match Windows follows Windows' app mode (Settings, Personalisation, Colours), and changes " +
+                    "with it. The radar stays dark either way.", color = Brand.TextSecondary, fontSize = 13.sp)
+            }
+            HelpSection(paths)
+            AboutSection(saved.uuid, onShowLicenses = { showLicenses = true }) {
+                if (updates != null) {
+                    var check by remember { mutableStateOf(saved.checkForUpdates) }
+                    UpdateSettings(updates, check) { on ->
+                        check = on
+                        FeederSettings.update(paths) { it.copy(checkForUpdates = on) }
+                    }
+                }
+            }
+        }
+        if (unsaved || note != null || problem != null) {
+            SaveBar(unsaved, note, problem, onSave = ::save, onDiscard = { show(savedForm); problem = null })
         }
     }
 }
@@ -471,6 +562,7 @@ private fun GainSelect(value: String, onChange: (String) -> Unit) {
             gainLabel(value), {}, readOnly = true, singleLine = true, label = { Text("Gain") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
             modifier = Modifier.width(300.dp).menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+            colors = fieldColors(),
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { g ->
@@ -496,7 +588,7 @@ private fun FeederIdRow(uuid: String) {
     LaunchedEffect(result) { if (result != null) { delay(2_000); result = null } }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Feeder ID: $uuid", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Brand.TextSecondary)
-        TextButton(onClick = {
+        LinkButton(onClick = {
             result = if (runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(uuid), null) }.isSuccess)
                 "Copied" else "Couldn't copy; try again"
         }) { Text(result ?: "Copy to clipboard") }
@@ -517,9 +609,10 @@ private fun AboutSection(uuid: String, onShowLicenses: () -> Unit, updates: @Com
         Text("What ADS-B Exchange receives", style = MaterialTheme.typography.titleSmall)
         Text("ADS-B Exchange receives the aircraft messages this PC hears, with a feeder ID that marks this as a " +
             "desktop feeder. With MLAT on, it also receives the position you entered, the antenna altitude and your " +
-            "feeder name, which MLAT needs to work out aircraft positions. ADS-B Exchange's public MLAT map lists " +
-            "feeders by name; with privacy off, it also shows your feeder at an approximate location, rounded to about " +
-            "1 km, never the precise one. Privacy is off to start with. For your stats page, it also receives the list of aircraft this PC hears " +
+            "feeder name, which MLAT needs to work out aircraft positions. With MLAT privacy off, ADS-B Exchange's " +
+            "Leaderboard and public MLAT map list your feeder by name, and the map shows it at an approximate location, " +
+            "rounded to about 1 km, never the precise one; with it on, the feeder is left off both. Privacy is off " +
+            "to start with. For your stats page, it also receives the list of aircraft this PC hears " +
             "every 5 seconds; each aircraft's distance and direction from the receiver are only included while " +
             "MLAT is on, since they reveal where the receiver is. The position isn't sent to anyone other than " +
             "ADS-B Exchange.",
