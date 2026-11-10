@@ -51,6 +51,13 @@ data class Aircraft(
 
 enum class FeedState { UNKNOWN, CONNECTED, DISCONNECTED }
 
+/**
+ * Why readsb couldn't connect, from its log (see [FeedLogWatcher.failure]): the other end answered
+ * and refused (nothing listening on that port), didn't answer at all, or its name didn't resolve.
+ * Shown for the other receiver read over the network (Settings > Receiver).
+ */
+enum class ConnectFailure { REFUSED, NO_ANSWER, UNKNOWN_HOST }
+
 /** Polls readsb's output files. Keeps the previous sample to turn message counts into a rate. */
 class ReceiverStatusReader(private val paths: FeederPaths) {
     private var lastNow: Double? = null
@@ -152,18 +159,36 @@ class ReceiverStatusReader(private val paths: FeederPaths) {
 }
 
 /**
- * A feed connector ("host,port", plus its failover: [FeederSettings.feedEndpoints]) and how to
+ * A connector ("host,port", plus its failover: [FeederSettings.feedEndpoints]) and how to
  * recognise its connect/disconnect lines in readsb's log. Connected to either server is connected.
+ * The feed to ADS-B Exchange, or the other receiver read in network mode ([FeederSettings.networkSource]).
  */
 private class FeedTarget(target: String) {
-    private val endpoints = FeederSettings.feedEndpoints(target).map { it.substringBefore(",") to " port ${it.substringAfter(",")}" }
+    private val endpoints = FeederSettings.feedEndpoints(target).map {
+        // A whole port number: port 3000 isn't port 30005.
+        it.substringBefore(",") to Regex(""" port ${Regex.escape(it.substringAfter(","))}\b""")
+    }
 
     fun classify(line: String): FeedState? {
-        if (endpoints.none { (host, port) -> line.contains(host) && line.contains(port) }) return null
+        // A host name that doesn't resolve: readsb says so without the port.
+        if (endpoints.any { (host, _) -> line.contains("Name resolution for $host failed") }) return FeedState.DISCONNECTED
+        if (endpoints.none { (host, port) -> line.contains(host) && port.containsMatchIn(line) }) return null
         if (line.contains("Connection established")) return FeedState.CONNECTED
         if (line.contains("disconnected") || line.contains("failed") || line.contains("refused") ||
             line.contains("timed out")) return FeedState.DISCONNECTED
         return null
+    }
+
+    /**
+     * Why a line [classify] calls DISCONNECTED says connecting failed, or null for a connection that
+     * dropped. readsb.exe writes "Connection to H port P failed (1): 107 (connection refused)",
+     * "Connection to H port P timed out." and "Name resolution for H failed: No such host is known."
+     */
+    fun failure(line: String): ConnectFailure? = when {
+        line.contains("Name resolution for ") -> ConnectFailure.UNKNOWN_HOST
+        line.contains("refused", ignoreCase = true) -> ConnectFailure.REFUSED
+        line.contains("Connection to ") -> ConnectFailure.NO_ANSWER // timed out, or no route to it
+        else -> null
     }
 }
 
@@ -178,6 +203,8 @@ class FeedLogWatcher(private val file: File, target: String, startAt: Long = 0L)
     private val feed = FeedTarget(target)
     private var offset = startAt
     var state = FeedState.UNKNOWN; private set
+    /** Why the latest attempt to connect failed, while [state] is DISCONNECTED; see [FeedTarget.failure]. */
+    var failure: ConnectFailure? = null; private set
 
     fun poll(): FeedState {
         val len = file.length()
@@ -191,7 +218,15 @@ class FeedLogWatcher(private val file: File, target: String, startAt: Long = 0L)
                 val end = bytes.lastIndexOf('\n'.code.toByte())
                 if (end >= 0) {
                     offset += end + 1
-                    String(bytes, 0, end, Charsets.UTF_8).lineSequence().forEach { l -> feed.classify(l)?.let { state = it } }
+                    String(bytes, 0, end, Charsets.UTF_8).lineSequence().forEach { l ->
+                        feed.classify(l)?.let {
+                            state = it
+                            // After a few failures readsb says it's "suppressing most error messages":
+                            // the reason it last gave still holds.
+                            if (it == FeedState.CONNECTED) failure = null
+                            else if (!l.contains("suppressing")) failure = feed.failure(l)
+                        }
+                    }
                 }
             }
         }

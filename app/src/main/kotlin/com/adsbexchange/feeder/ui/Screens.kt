@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adsbexchange.feeder.BuildInfo
 import com.adsbexchange.feeder.data.AltitudeUnit
+import com.adsbexchange.feeder.data.ConnectFailure
 import com.adsbexchange.feeder.data.Appearance
 import com.adsbexchange.feeder.data.FeedState
 import com.adsbexchange.feeder.data.FeedWatchdog
@@ -55,6 +56,7 @@ import com.adsbexchange.feeder.data.FeederStatus.Reason
 import com.adsbexchange.feeder.data.FeederStatus.State
 import com.adsbexchange.feeder.data.MLAT_ALTITUDE_RANGE_M
 import com.adsbexchange.feeder.data.MlatReadiness
+import com.adsbexchange.feeder.data.ReceiverSource
 import com.adsbexchange.feeder.data.ReceiverStatus
 import com.adsbexchange.feeder.data.RestartBudget
 import com.adsbexchange.feeder.data.StationLocation
@@ -114,12 +116,17 @@ fun StatusScreen(
         }
         // A tray notification is easy to miss, so a problem stays here while it lasts.
         status.feedProblem?.let { p ->
+            val at = status.source?.let(ReceiverSource::shown)
             SectionCard(null) {
                 WarningRow(when (p) {
+                    FeedWatchdog.Problem.SOURCE_DOWN -> "This PC hasn't been able to reach the receiver at $at for 15 " +
+                        "minutes or more. Check that it's switched on and on this network; the feeder keeps retrying."
                     FeedWatchdog.Problem.FEED_DOWN -> "This PC hasn't been able to send to ADS-B Exchange for 15 minutes or " +
                         "more. Check its internet connection; the feeder keeps retrying."
-                    FeedWatchdog.Problem.NO_AIRCRAFT -> "No aircraft heard for 2 hours or more. Check that the antenna is " +
-                        "connected and the RTL-SDR is firmly plugged in."
+                    FeedWatchdog.Problem.NO_AIRCRAFT -> if (at != null) "No aircraft heard from the receiver at $at for 2 " +
+                        "hours or more. Check that its antenna is connected and that it's receiving."
+                        else "No aircraft heard for 2 hours or more. Check that the antenna is connected and the RTL-SDR " +
+                        "is firmly plugged in."
                 })
             }
         }
@@ -192,6 +199,11 @@ private data class Headline(val text: String, val detail: String?, val color: Co
 private fun describe(s: FeederStatus): Headline = when {
     // A crash loop: shown through its restarts (including the brief runs between them) until a run
     // stays up or the feed connects. readsb's last line is in the card below.
+    s.sdrFailing && s.state != State.STOPPED && s.feedState != FeedState.CONNECTED && s.source != null -> Headline(
+        "The receiver keeps stopping",
+        "readsb stopped ${RestartBudget.MAX_EXITS} times in ${RestartBudget.WINDOW_MS / 60_000} minutes. The feeder " +
+            "keeps trying every minute; the details are in the log.",
+        Brand.Red)
     s.sdrFailing && s.state != State.STOPPED && s.feedState != FeedState.CONNECTED -> Headline(
         "The RTL-SDR keeps failing",
         "The receiver stopped ${RestartBudget.MAX_EXITS} times in ${RestartBudget.WINDOW_MS / 60_000} minutes. Close " +
@@ -204,6 +216,10 @@ private fun describe(s: FeederStatus): Headline = when {
 @Composable
 private fun describeState(s: FeederStatus): Headline = when (s.state) {
     State.RUNNING -> when {
+        // Reading another receiver over the network: nothing to feed until that's connected.
+        s.source != null && s.sourceState == FeedState.DISCONNECTED -> sourceProblem(s.source, s.sourceFailure)
+        s.source != null && s.sourceState != FeedState.CONNECTED ->
+            Headline("Connecting to your receiver…", "At ${ReceiverSource.shown(s.source)}.", Brand.Warn)
         !s.feeding -> Headline("Receiving (not feeding)", "Feeding ADS-B Exchange is off in Settings.", Brand.Warn)
         s.feedState == FeedState.CONNECTED -> Headline("Feeding ADS-B Exchange", null, Brand.Green)
         else -> Headline("Connecting to ADS-B Exchange…", null, Brand.Warn)
@@ -230,6 +246,32 @@ private fun describeState(s: FeederStatus): Headline = when (s.state) {
             "Something unexpected stopped the feeder. Start tries again; the details are in the log.", Brand.Red)
         Reason.USER_STOPPED -> Headline("Stopped", "Not feeding until you start it again.", Brand.TextSecondary)
         else -> Headline("Stopped", null, Brand.TextSecondary)
+    }
+}
+
+/** Reading another receiver over the network, and it can't be read: why, as far as readsb could tell. */
+@Composable
+private fun sourceProblem(source: String, failure: ConnectFailure?): Headline {
+    val at = ReceiverSource.shown(source)
+    val host = source.substringBefore(',')
+    val port = source.substringAfter(',')
+    return when (failure) {
+        ConnectFailure.REFUSED -> Headline("Your receiver isn't sending data",
+            "$host answered, but nothing on it accepts connections on port $port. Check that dump1090-fa or readsb " +
+                "is running on it, with Beast output on that port (30005 as standard). The feeder keeps trying.",
+            Brand.Warn)
+        ConnectFailure.NO_ANSWER -> Headline("Can't reach your receiver",
+            "Nothing answered at $at. Check that it's switched on, that the address is right, and that this PC is " +
+                "on the same network: a firewall or a separate network between them stops it too. The feeder keeps trying.",
+            Brand.Warn)
+        ConnectFailure.UNKNOWN_HOST -> Headline("Can't find your receiver",
+            "This PC can't find \"$host\" on the network. Check the name, or enter the receiver's IP address " +
+                "instead (your router lists it). The feeder keeps trying.",
+            Brand.Warn)
+        null -> Headline("Can't reach your receiver",
+            "Nothing from $at. Check that it's switched on and on this network, and that dump1090-fa or readsb on " +
+                "it has Beast output on that port (30005 as standard). The feeder keeps trying.",
+            Brand.Warn)
     }
 }
 
@@ -297,7 +339,7 @@ private data class SettingsForm(
     val lat: String, val lon: String, val alt: String, val altUnit: AltitudeUnit, val confirmed: Boolean,
     val name: String, val feed: Boolean, val mlat: Boolean, val privacy: Boolean, val startWithWindows: Boolean,
     val feedAlerts: Boolean, val feedOnBattery: Boolean, val statsOnMetered: Boolean, val gain: String,
-    val biasTee: Boolean, val appearance: Appearance,
+    val biasTee: Boolean, val appearance: Appearance, val source: ReceiverSource, val host: String, val port: String,
 ) {
     companion object {
         fun of(s: FeederSettings): SettingsForm {
@@ -308,6 +350,7 @@ private data class SettingsForm(
                 name = s.name, feed = s.feedAdsbx, mlat = s.mlatEnabled, privacy = s.mlatPrivacy,
                 startWithWindows = s.startWithWindows, feedAlerts = s.feedAlerts, feedOnBattery = s.feedOnBattery,
                 statsOnMetered = s.statsOnMetered, gain = s.gain, biasTee = s.biasTee, appearance = s.appearance,
+                source = s.source, host = s.networkHost, port = s.networkPort.toString(),
             )
         }
     }
@@ -360,6 +403,9 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
     var gain by remember { mutableStateOf(savedForm.gain) }
     var biasTee by remember { mutableStateOf(savedForm.biasTee) }
     var appearance by remember { mutableStateOf(savedForm.appearance) }
+    var source by remember { mutableStateOf(savedForm.source) }
+    var host by remember { mutableStateOf(savedForm.host) }
+    var port by remember { mutableStateOf(savedForm.port) }
     var note by remember { mutableStateOf<String?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var showLicenses by remember { mutableStateOf(false) }
@@ -370,10 +416,10 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
         lat = f.lat; lon = f.lon; alt = f.alt; altUnit = f.altUnit; confirmed = f.confirmed; name = f.name
         feed = f.feed; mlat = f.mlat; privacy = f.privacy; startWithWindows = f.startWithWindows
         feedAlerts = f.feedAlerts; feedOnBattery = f.feedOnBattery; statsOnMetered = f.statsOnMetered
-        gain = f.gain; biasTee = f.biasTee; appearance = f.appearance
+        gain = f.gain; biasTee = f.biasTee; appearance = f.appearance; source = f.source; host = f.host; port = f.port
     }
     val unsaved = SettingsForm(lat, lon, alt, altUnit, confirmed, name, feed, mlat, privacy, startWithWindows,
-        feedAlerts, feedOnBattery, statsOnMetered, gain, biasTee, appearance) != savedForm
+        feedAlerts, feedOnBattery, statsOnMetered, gain, biasTee, appearance, source, host, port) != savedForm
 
     fun save() {
         // "1,177" is 1177, not 1.177: TypedNumber reads thousands separators, and "3862 ft" is feet.
@@ -382,11 +428,21 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
         val al = alt.takeIf { it.isNotBlank() }?.let { TypedNumber.altitude(it, altUnit) }?.let { Math.round(it * 100) / 100.0 }
         val blank = lat.isBlank() && lon.isBlank()
         val location = if (blank) null else la?.let { a -> lo?.let { o -> StationLocation.manual(a, o, al) } }
+        // "192.168.1.50:30005" in the address is the address and the port.
+        val hostPort = Regex("(.+):([0-9]+)").matchEntire(host.trim())
+        val h = hostPort?.groupValues?.get(1) ?: host.trim()
+        val networkPort = (hostPort?.groupValues?.get(2) ?: port.trim()).toIntOrNull()
+        val network = source == ReceiverSource.NETWORK
         problem = when {
             !blank && location == null -> "Latitude must be -90 to 90 and longitude -180 to 180."
             alt.isNotBlank() && al == null ->
                 "Altitude must be a number of ${if (altUnit == AltitudeUnit.FEET) "feet" else "metres"}."
             al != null && al !in MLAT_ALTITUDE_RANGE_M -> altitudeOutOfRange(al)
+            network && h.isEmpty() -> "Enter the address of the receiver to read."
+            network && !ReceiverSource.validHost(h) -> "The receiver's address can only have letters, digits, dots and " +
+                "hyphens, such as 192.168.1.50 or raspberrypi.local."
+            network && (networkPort == null || !ReceiverSource.validPort(networkPort)) ->
+                "The port must be a number from 1 to 65535 (30005 as standard)."
             else -> null
         }
         if (problem != null) return
@@ -398,11 +454,18 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
                 mlatEnabled = mlat, mlatPrivacy = privacy, startWithWindows = startWithWindows,
                 feedAlerts = feedAlerts, gain = gain, biasTee = biasTee,
                 feedOnBattery = feedOnBattery, statsOnMetered = statsOnMetered, appearance = appearance,
+                source = source,
+                // With the stick chosen, the address fields aren't checked, so they keep what was saved.
+                networkHost = if (network) h else it.networkHost,
+                networkPort = if (network) networkPort!! else it.networkPort,
             )
         }
         Autostart.apply(startWithWindows)
         onAppearance(appearance)
         note = when {
+            after.networkSource() != before.networkSource() -> after.networkSource()?.let {
+                "Saved. The receiver is restarting to read ${ReceiverSource.shown(it)}."
+            } ?: "Saved. The receiver is restarting with the USB stick."
             gain != before.gain && biasTee != before.biasTee -> "Saved. The receiver is restarting with the new gain and bias tee."
             gain != before.gain -> "Saved. The receiver is restarting with the new gain."
             biasTee != before.biasTee -> "Saved. The receiver is restarting with the bias tee ${if (biasTee) "on" else "off"}."
@@ -453,19 +516,18 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
                     Text("This position is within 15 m of the antenna (needed for MLAT)")
                 }
             }
-            SectionCard("Receiver gain") {
-                GainSelect(gain) { gain = it }
-                Text("Auto suits most setups: readsb adjusts the gain as conditions change. A lower setting can help " +
-                    "near an airport, where strong signals swamp the stick; a higher one can pick up more distant " +
-                    "aircraft. Saving a new gain restarts the receiver, which takes a few seconds.",
-                    color = Brand.TextSecondary, fontSize = 13.sp)
-                Toggle("Power an amplifier through the antenna cable (bias tee)", biasTee) { biasTee = it }
-                Text("Only for an amplifier (LNA) at the antenna that takes its power through the cable, with a stick " +
-                    "that can supply it (the RTL-SDR Blog V3 or V4, or a Nooelec SMArTee, say). Without it, such an " +
-                    "amplifier passes little or no signal. Leave it off otherwise: it puts about 4.5 V on the antenna " +
-                    "socket, which can damage an antenna or splitter that shorts it. The ADS-B Exchange stick doesn't " +
-                    "need it. Saving a change restarts the receiver.",
-                    color = Brand.TextSecondary, fontSize = 13.sp)
+            SectionCard("Receiver") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReceiverSource.entries.forEach { r ->
+                        FilterChip(
+                            selected = source == r, onClick = { source = r },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Brand.GreenDeep, selectedLabelColor = Brand.Green),
+                            label = { Text(r.label) },
+                        )
+                    }
+                }
+                if (source == ReceiverSource.NETWORK) NetworkSourceFields(host, port, { host = it }, { port = it })
+                else StickFields(gain, biasTee, { gain = it }, { biasTee = it })
             }
             SectionCard("Feeding") {
                 Toggle("Feed ADS-B Exchange", feed) { feed = it }
@@ -476,8 +538,9 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
                     "location and the feeder isn't listed on the Leaderboard.", color = Brand.TextSecondary, fontSize = 13.sp)
                 Toggle("Start with Windows (in the notification area)", startWithWindows) { startWithWindows = it }
                 Toggle("Alert me if feeding stops", feedAlerts) { feedAlerts = it }
-                Text("If this PC can't reach ADS-B Exchange for 15 minutes, hears no aircraft for 2 hours, or the " +
-                    "RTL-SDR is unplugged.", color = Brand.TextSecondary, fontSize = 13.sp)
+                Text("If this PC can't reach ADS-B Exchange, or the receiver it reads over the network, for 15 " +
+                    "minutes, hears no aircraft for 2 hours, or the RTL-SDR is unplugged.",
+                    color = Brand.TextSecondary, fontSize = 13.sp)
                 Text("While feeding, the aircraft this PC hears also go to ADS-B Exchange every 5 seconds for your " +
                     "feeder's stats page, as with its Raspberry Pi feeders' stats package. That's roughly 1-10 GB a " +
                     "month, depending on how many aircraft are in range.",
@@ -525,6 +588,43 @@ fun SettingsScreen(paths: FeederPaths, updates: UpdateChecker? = null, onAppeara
     }
 }
 
+/** Settings > Receiver for the USB stick: its gain and bias tee, which readsb reads when it starts. */
+@Composable
+private fun StickFields(gain: String, biasTee: Boolean, onGain: (String) -> Unit, onBiasTee: (Boolean) -> Unit) {
+    GainSelect(gain, onGain)
+    Text("Auto suits most setups: readsb adjusts the gain as conditions change. A lower setting can help " +
+        "near an airport, where strong signals swamp the stick; a higher one can pick up more distant " +
+        "aircraft. Saving a new gain restarts the receiver, which takes a few seconds.",
+        color = Brand.TextSecondary, fontSize = 13.sp)
+    Toggle("Power an amplifier through the antenna cable (bias tee)", biasTee, onBiasTee)
+    Text("Only for an amplifier (LNA) at the antenna that takes its power through the cable, with a stick " +
+        "that can supply it (the RTL-SDR Blog V3 or V4, or a Nooelec SMArTee, say). Without it, such an " +
+        "amplifier passes little or no signal. Leave it off otherwise: it puts about 4.5 V on the antenna " +
+        "socket, which can damage an antenna or splitter that shorts it. The ADS-B Exchange stick doesn't " +
+        "need it. Saving a change restarts the receiver.",
+        color = Brand.TextSecondary, fontSize = 13.sp)
+}
+
+/**
+ * Settings > Receiver for another receiver on the network: where its Beast output is. A receiver
+ * that feeds ADS-B Exchange already shouldn't be fed again from here, which only the user can tell.
+ */
+@Composable
+private fun NetworkSourceFields(host: String, port: String, onHost: (String) -> Unit, onPort: (String) -> Unit) {
+    Text("Read the aircraft another receiver hears, over your network: a Raspberry Pi or other receiver running " +
+        "dump1090-fa, readsb, or a feeder image built on them. The feeder reads its Beast output, on port 30005 as " +
+        "standard. No USB stick is needed on this PC.", color = Brand.TextSecondary, fontSize = 13.sp)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(host, onHost, Modifier.weight(2f), label = { Text("Receiver's address") }, singleLine = true,
+            placeholder = { Text("192.168.1.50 or raspberrypi.local") }, colors = fieldColors())
+        OutlinedTextField(port, onPort, Modifier.weight(1f), label = { Text("Port") }, singleLine = true, colors = fieldColors())
+    }
+    Text("Only for a receiver that doesn't already feed ADS-B Exchange itself. If it does, ADS-B Exchange gets its " +
+        "aircraft twice, and with MLAT on, two stations at the same spot can upset MLAT for feeders nearby. The " +
+        "receiver position above must be that receiver's antenna's. Saving a change restarts the receiver.",
+        color = Brand.Warn, fontSize = 13.sp)
+}
+
 /**
  * As the phone's Settings > Help: support is ADS-B Exchange's Discord server. Unlike the phone's
  * diagnostics, the log folder holds the location (json/gpsd.json, outline.json, aircraft.json's
@@ -538,7 +638,7 @@ private fun HelpSection(paths: FeederPaths) {
             "log folder, as other files in it include the receiver's location.",
             style = MaterialTheme.typography.bodySmall, color = Brand.TextSecondary)
         Text("Using an amplifier powered through the antenna cable, and seeing few or no aircraft? Turn on " +
-            "\"Power an amplifier through the antenna cable\" under Receiver gain.",
+            "\"Power an amplifier through the antenna cable\" under Receiver, above.",
             style = MaterialTheme.typography.bodySmall, color = Brand.TextSecondary)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { openUrl(Links.DISCORD) }) { Text("Get help on Discord") }

@@ -6,6 +6,7 @@ import com.adsbexchange.feeder.data.FeederStatus
 import com.adsbexchange.feeder.data.FeederStatus.DriverSetup
 import com.adsbexchange.feeder.data.FeederStatus.Reason
 import com.adsbexchange.feeder.data.FeederStatus.State
+import com.adsbexchange.feeder.data.ReceiverSource
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -365,5 +366,36 @@ class FeederEngineSdrTest {
         Thread.sleep(4_000)
         assertEquals(0, readsbLookups.get())
         assertFalse(engine.status.value.state == State.RUNNING)
+    }
+
+    /**
+     * Settings > Receiver's network source: readsb starts without a stick, and isn't restarted for
+     * the stick's gain. Back to the stick, readsb restarts and waits for one. Stand-in readsb: cmd.exe.
+     */
+    @Test
+    fun aNetworkSourceNeedsNoStick() {
+        engine.shutdown()
+        val probes = AtomicInteger()
+        val cmd = File(System.getenv("SystemRoot"), "System32\\cmd.exe")
+        engine = FeederEngine(paths, findReadsb = { readsbLookups.incrementAndGet(); cmd },
+            sdrProbe = { probes.incrementAndGet(); scan }, installDriver = { SdrDriver.Outcome.FAILED }, conditions = power)
+        FeederSettings.update(paths) {
+            it.copy(source = ReceiverSource.NETWORK, networkHost = "127.0.0.1", networkPort = 30199)
+        }
+        engine.start()
+        val running = awaitStatus("running without a stick") { it.state == State.RUNNING }
+        assertEquals("127.0.0.1,30199", running.source)
+        assertEquals("no stick check", 0, probes.get())
+        assertTrue(paths.logFile.readLines().last { "starting readsb" in it }.contains("127.0.0.1,30199,beast_in"))
+
+        Thread.sleep(1_100) // a settings file newer than the one the engine read
+        FeederSettings.update(paths) { it.copy(gain = "38.6") }
+        Thread.sleep(3_000)
+        assertEquals("the stick's gain doesn't restart it", 1, readsbLookups.get())
+
+        FeederSettings.update(paths) { it.copy(source = ReceiverSource.USB) }
+        awaitStatus("waiting for a stick") { it.state == State.STARTING && it.reason == Reason.NO_SDR }
+        assertTrue(paths.logFile.readLines().any { "receiver changed to the USB stick; restarting readsb" in it })
+        assertEquals(null, engine.status.value.source)
     }
 }

@@ -47,7 +47,14 @@ Windows 10 and 11, 64-bit.
 **Which stick?** Any RTL2832U-based RTL-SDR works. One built for aircraft, with a 1090 MHz filter
 and amplifier inside (such as ADS-B Exchange's), receives far more than a general-purpose stick on
 the same antenna. If you use an amplifier at the antenna that's powered through the cable, turn on
-**Power an amplifier through the antenna cable (bias tee)** under Settings > Receiver gain.
+**Power an amplifier through the antenna cable (bias tee)** under Settings > Receiver.
+
+**Already have a receiver on your network?** A Raspberry Pi running dump1090-fa or readsb (or a
+feeder image built on them) can feed ADS-B Exchange through the app instead, with no second antenna
+or stick. In Settings > Receiver, choose **Another receiver on the network** and enter its address;
+the app reads its Beast output, on port 30005 as standard. Enter that receiver's antenna position
+for MLAT. Only use this for a receiver that doesn't already feed ADS-B Exchange itself: otherwise
+ADS-B Exchange gets its aircraft twice, and two MLAT stations at one spot can upset MLAT.
 
 Uninstalling (Settings > Apps) removes the app and its shortcuts. Your settings and history stay
 in `%LOCALAPPDATA%\ADS-B Exchange Feeder`.
@@ -66,7 +73,8 @@ in `%LOCALAPPDATA%\ADS-B Exchange Feeder`.
 - **The feeder ID** marks the feed as coming from this app. Share `readsb.log` only privately,
   since it contains the ID.
 - The app checks GitHub for a newer release twice a day (Settings > About can turn that off).
-  Apart from that, the feed, MLAT and the stats, it makes no connections of its own.
+  Apart from that, the feed, MLAT, the stats and a receiver on the network you choose to read, it
+  makes no connections of its own.
 
 ## How it works
 
@@ -86,7 +94,7 @@ in `%LOCALAPPDATA%\ADS-B Exchange Feeder`.
 | Piece | Where |
 |---|---|
 | Entry point: tray, window, single-instance lock, `--background` | `app/src/main/kotlin/.../Main.kt` |
-| Runs readsb, gpsd, MLAT, stats and history; starts readsb once a stick with WinUSB is plugged in, restarts it after it exits, recovers from unexpected errors, and keeps the PC awake while feeding | `service/FeederEngine.kt` |
+| Runs readsb, gpsd, MLAT, stats and history; starts readsb once a stick with WinUSB is plugged in (or at once, reading another receiver on the network), restarts it after it exits, recovers from unexpected errors, and keeps the PC awake while feeding | `service/FeederEngine.kt` |
 | readsb as a child process: stdin pipe for a clean stop, a kill-on-close job so it can't outlive the app | `service/ReadsbProcess.kt` |
 | The MLAT client (a Kotlin port of mlat-client) | `mlat/` |
 | Stats uploads, as ADS-B Exchange's stats package sends them | `service/StatsUploader.kt` |

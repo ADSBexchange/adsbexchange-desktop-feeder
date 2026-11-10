@@ -33,6 +33,12 @@ data class FeederStatus(
      * restarting it, until a run stays up; see [RestartBudget].
      */
     val sdrFailing: Boolean = false,
+    /** The other receiver this run reads, as "host,port" ([FeederSettings.networkSource]); null for the USB stick. */
+    val source: String? = null,
+    /** Whether readsb is connected to [source]; UNKNOWN until it says, and for the USB stick. */
+    val sourceState: FeedState = FeedState.UNKNOWN,
+    /** Why connecting to [source] failed, while [sourceState] is DISCONNECTED; null if readsb didn't say. */
+    val sourceFailure: ConnectFailure? = null,
     /** Loopback port of readsb's Beast output in this run. */
     val beastPort: Int? = null,
     /** The RTL-SDR stick found, by librtlsdr's name ("Generic RTL2832U OEM"); null if none or unknown. */
