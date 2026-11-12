@@ -398,4 +398,63 @@ class FeederEngineSdrTest {
         assertTrue(paths.logFile.readLines().any { "receiver changed to the USB stick; restarting readsb" in it })
         assertEquals(null, engine.status.value.source)
     }
+
+    /**
+     * Issue #30: a stick whose tuner can't tune to 1090 MHz (librtlsdr names it in readsb's log) stops
+     * readsb, with a tray alert, and isn't tried again until the sticks change. Stand-in readsb: cmd.exe,
+     * with librtlsdr's line written to the log as readsb would.
+     */
+    @Test
+    fun aTunerThatCantReceive1090StopsFeedingUntilTheStickChanges() {
+        engine.shutdown()
+        val cmd = File(System.getenv("SystemRoot"), "System32\\cmd.exe")
+        val events = CopyOnWriteArrayList<FeederEngine.Event>()
+        engine = FeederEngine(paths, findReadsb = { readsbLookups.incrementAndGet(); cmd }, sdrProbe = { scan },
+            installDriver = { SdrDriver.Outcome.FAILED }, conditions = power)
+        val scope = CoroutineScope(Dispatchers.Default)
+        scope.launch { engine.events.collect { events += it } }
+        Thread.sleep(300)
+        try {
+            val stick = tvTuner.copy(driver = "WinUSB", winusb = true)
+            scan = SdrScan(listOf(stick))
+            engine.start()
+            awaitStatus("running") { it.state == State.RUNNING }
+            paths.logFile.appendText("Found Fitipower FC0012 tuner\nrtlsdr: BAD TUNER, 1090 reception will be TERRIBLE, use another SDR\n")
+            val stopped = awaitStatus("stopped for the tuner") { it.reason == Reason.UNSUPPORTED_TUNER }
+            assertEquals(State.STARTING, stopped.state)
+            assertEquals("Fitipower FC0012", stopped.tuner)
+            assertFalse(stopped.feeding)
+            Thread.sleep(500)
+            assertEquals(listOf(FeederEngine.Event.UnsupportedTuner("Fitipower FC0012")), events.toList())
+
+            Thread.sleep(4_000) // past the next stick checks
+            assertEquals("not tried again with the same stick", 1, readsbLookups.get())
+
+            // Unplugged and another plugged in: tried again.
+            scan = SdrScan(emptyList())
+            awaitStatus("waiting for a stick") { it.reason == Reason.NO_SDR }
+            scan = SdrScan(listOf(stick.copy(name = "RTL-SDR Blog V4")))
+            awaitStatus("running again") { it.state == State.RUNNING }
+            assertEquals(2, readsbLookups.get())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /** An FC0013 barely reaches 1090 MHz: feeding carries on, and Status warns (from [FeederStatus.tuner]). */
+    @Test
+    fun aTunerThatBarelyReaches1090KeepsFeeding() {
+        engine.shutdown()
+        val cmd = File(System.getenv("SystemRoot"), "System32\\cmd.exe")
+        engine = FeederEngine(paths, findReadsb = { readsbLookups.incrementAndGet(); cmd }, sdrProbe = { scan },
+            installDriver = { SdrDriver.Outcome.FAILED }, conditions = power)
+        scan = SdrScan(listOf(tvTuner.copy(driver = "WinUSB", winusb = true)))
+        engine.start()
+        awaitStatus("running") { it.state == State.RUNNING }
+        paths.logFile.appendText("Found Fitipower FC0013 tuner\n")
+        awaitStatus("tuner known") { it.tuner == "Fitipower FC0013" }
+        Thread.sleep(3_000)
+        assertEquals(State.RUNNING, engine.status.value.state)
+        assertEquals(1, readsbLookups.get())
+    }
 }

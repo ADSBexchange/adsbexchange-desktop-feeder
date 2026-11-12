@@ -46,7 +46,9 @@ Windows 10 and 11, 64-bit.
 
 **Which stick?** Any RTL2832U-based RTL-SDR works. One built for aircraft, with a 1090 MHz filter
 and amplifier inside (such as ADS-B Exchange's), receives far more than a general-purpose stick on
-the same antenna. If you use an amplifier at the antenna that's powered through the cable, turn on
+the same antenna. A stick with a Fitipower FC0012 or FCI FC2580 tuner can't tune to 1090 MHz at all,
+and the app stops and says so; one with an FC0013 barely reaches it, and the app warns. If you use
+an amplifier at the antenna that's powered through the cable, turn on
 **Power an amplifier through the antenna cable (bias tee)** under Settings > Receiver.
 
 **Already have a receiver on your network?** A Raspberry Pi running dump1090-fa or readsb (or a

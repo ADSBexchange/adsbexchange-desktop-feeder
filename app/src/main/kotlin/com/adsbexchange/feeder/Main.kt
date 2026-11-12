@@ -218,6 +218,9 @@ private fun notificationFor(e: FeederEngine.Event, network: Boolean): Notificati
         "Feeding has stopped. Plug the stick back in and feeding starts again by itself.", Notification.Type.Warning)
     FeederEngine.Event.FeedRecovered -> Notification("Feeding again",
         "The feeder is working again.", Notification.Type.Info)
+    is FeederEngine.Event.UnsupportedTuner -> Notification("This RTL-SDR can't receive ADS-B",
+        "Its ${e.tuner} tuner can't tune to 1090 MHz, so feeding has stopped. Open the feeder to see which " +
+            "sticks can.", Notification.Type.Warning)
     FeederEngine.Event.SdrFailing -> if (network) Notification("The receiver keeps stopping",
         "readsb stopped ${RestartBudget.MAX_EXITS} times in ${RestartBudget.WINDOW_MS / 60_000} minutes. The feeder " +
             "keeps trying every minute; the details are in the log.", Notification.Type.Error)
@@ -240,6 +243,7 @@ private fun trayText(s: FeederStatus): String = if (s.sdrFailing && s.state != S
     State.STARTING -> when (s.reason) {
         Reason.NO_SDR -> "no RTL-SDR found"
         Reason.NEEDS_DRIVER -> "RTL-SDR needs its driver"
+        Reason.UNSUPPORTED_TUNER -> "this RTL-SDR can't receive ADS-B"
         Reason.ON_BATTERY -> "paused on battery"
         Reason.ENGINE_ERROR -> "restarting after an error"
         else -> "starting"
