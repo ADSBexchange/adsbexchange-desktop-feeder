@@ -194,34 +194,45 @@ private fun runApp(paths: FeederPaths, args: Array<String>) {
         // notification back, so recovery gets its own short one; the Status screen shows a
         // problem for as long as it lasts.
         LaunchedEffect(Unit) {
-            engine.events.collect { e -> trayState.sendNotification(notificationFor(e)) }
+            engine.events.collect { e -> trayState.sendNotification(notificationFor(e, network = engine.status.value.source != null)) }
         }
     }
 }
 
-private fun notificationFor(e: FeederEngine.Event): Notification = when (e) {
+/** [network]: readsb reads another receiver over the network (Settings > Receiver), not a stick on this PC. */
+private fun notificationFor(e: FeederEngine.Event, network: Boolean): Notification = when (e) {
     is FeederEngine.Event.FeedProblem -> when (e.problem) {
+        FeedWatchdog.Problem.SOURCE_DOWN -> Notification("Can't reach your receiver",
+            "This PC hasn't been able to reach the receiver it reads over the network for 15 minutes. Check that " +
+                "it's switched on and on this network.", Notification.Type.Warning)
         FeedWatchdog.Problem.FEED_DOWN -> Notification("Not reaching ADS-B Exchange",
             "This PC hasn't been able to send to ADS-B Exchange for 15 minutes. Check its internet connection.",
             Notification.Type.Warning)
         FeedWatchdog.Problem.NO_AIRCRAFT -> Notification("No aircraft heard for 2 hours",
-            "The receiver is running but hasn't heard anything. Check that the antenna is connected and the " +
+            if (network) "The receiver it reads over the network hasn't sent anything. Check that its antenna is " +
+                "connected and that it's receiving."
+            else "The receiver is running but hasn't heard anything. Check that the antenna is connected and the " +
                 "RTL-SDR is firmly plugged in.", Notification.Type.Warning)
     }
     FeederEngine.Event.StickUnplugged -> Notification("RTL-SDR unplugged",
         "Feeding has stopped. Plug the stick back in and feeding starts again by itself.", Notification.Type.Warning)
     FeederEngine.Event.FeedRecovered -> Notification("Feeding again",
         "The feeder is working again.", Notification.Type.Info)
-    FeederEngine.Event.SdrFailing -> Notification("The RTL-SDR keeps failing",
+    FeederEngine.Event.SdrFailing -> if (network) Notification("The receiver keeps stopping",
+        "readsb stopped ${RestartBudget.MAX_EXITS} times in ${RestartBudget.WINDOW_MS / 60_000} minutes. The feeder " +
+            "keeps trying every minute; the details are in the log.", Notification.Type.Error)
+    else Notification("The RTL-SDR keeps failing",
         "The receiver stopped ${RestartBudget.MAX_EXITS} times in ${RestartBudget.WINDOW_MS / 60_000} minutes. Close any " +
             "other program using the stick and check its cable. The feeder keeps trying every minute.",
         Notification.Type.Error)
 }
 
 private fun trayText(s: FeederStatus): String = if (s.sdrFailing && s.state != State.STOPPED && s.feedState != FeedState.CONNECTED) {
-    "the RTL-SDR keeps failing; retrying"
+    if (s.source != null) "the receiver keeps stopping; retrying" else "the RTL-SDR keeps failing; retrying"
 } else when (s.state) {
     State.RUNNING -> when {
+        s.source != null && s.sourceState == FeedState.DISCONNECTED -> "can't reach your receiver"
+        s.source != null && s.sourceState != FeedState.CONNECTED -> "connecting to your receiver"
         !s.feeding -> "receiving, not feeding"
         s.feedState == FeedState.CONNECTED -> "feeding"
         else -> "connecting"

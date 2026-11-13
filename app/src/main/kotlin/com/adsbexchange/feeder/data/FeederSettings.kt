@@ -94,6 +94,10 @@ data class FeederSettings(
      * 4.5 V on the antenna socket. Off by default; readsb reads it only when it starts.
      */
     val biasTee: Boolean = false,
+    /** Settings > Receiver: the USB stick, or another receiver's Beast output ([networkHost], [networkPort]). */
+    val source: ReceiverSource = ReceiverSource.USB,
+    val networkHost: String = "",
+    val networkPort: Int = ReceiverSource.DEFAULT_PORT,
     val feedAdsbx: Boolean = true,
     /** Start feeding when the app starts. */
     val autoStart: Boolean = true,
@@ -147,6 +151,16 @@ data class FeederSettings(
     val appearance: Appearance = Appearance.DARK,
 ) {
     /**
+     * The other receiver to read, as "host,port", while [source] is the network and its address is
+     * usable; null for the USB stick. A host that isn't (settings.json edited by hand) means the
+     * stick, rather than a readsb that can't start.
+     */
+    fun networkSource(): String? =
+        if (source == ReceiverSource.NETWORK && ReceiverSource.validHost(networkHost) && ReceiverSource.validPort(networkPort)) {
+            "$networkHost,$networkPort"
+        } else null
+
+    /**
      * readsb's command line.
      *
      * @param gpsdPort port of the in-app [com.adsbexchange.feeder.service.GpsdServer], the only
@@ -155,15 +169,24 @@ data class FeederSettings(
      * @param feedTo where to send the feed, as "host,port" (see [ADSBX_FEED]), or null not to feed.
      * @param inputFile tests only: read UC8 I/Q samples from this file at real-time speed instead
      *   of the SDR.
+     * @param network read another receiver's Beast output from "host,port" instead of the SDR
+     *   ([networkSource]).
      */
     fun readsbArgs(
         paths: FeederPaths, gpsdPort: Int, feedTo: String?, beastPort: Int = DEFAULT_BEAST_PORT, inputFile: File? = null,
+        network: String? = null,
     ): List<String> = buildList {
         if (inputFile != null) {
             add("--device-type"); add("ifile")
             add("--ifile"); add(inputFile.absolutePath)
             add("--iformat"); add("UC8")
             add("--throttle")
+        } else if (network != null) {
+            // No stick: readsb connects to the other receiver and decodes what it sends, with its
+            // timestamps, so MLAT works as with a stick here. readsb reconnects by itself when the
+            // connection drops; FeederEngine follows it in the log (FeedLogWatcher).
+            add("--device-type"); add("none")
+            add("--net-connector"); add("$network,beast_in")
         } else {
             add("--device-type"); add("rtlsdr")
             add("--gain"); add(gain.ifBlank { "auto" })
@@ -216,6 +239,7 @@ data class FeederSettings(
         .put("uuid", uuid).put("name", name)
         .put("location", location?.toJson() ?: JSONObject.NULL)
         .put("gain", gain).put("biasTee", biasTee).put("feedAdsbx", feedAdsbx)
+        .put("source", source.key).put("networkHost", networkHost).put("networkPort", networkPort)
         .put("autoStart", autoStart).put("startWithWindows", startWithWindows).put("userStopped", userStopped)
         .put("feedAlerts", feedAlerts)
         .put("feedOnBattery", feedOnBattery).put("statsOnMetered", statsOnMetered)
@@ -317,6 +341,9 @@ data class FeederSettings(
                 location = StationLocation.fromJson(o.optJSONObject("location")),
                 gain = o.optString("gain", "auto").ifBlank { "auto" },
                 biasTee = o.optBoolean("biasTee", false),
+                source = ReceiverSource.ofKey(o.optString("source")),
+                networkHost = o.optString("networkHost").trim(),
+                networkPort = o.optInt("networkPort", ReceiverSource.DEFAULT_PORT),
                 feedAdsbx = o.optBoolean("feedAdsbx", true),
                 autoStart = o.optBoolean("autoStart", true),
                 feedAlerts = o.optBoolean("feedAlerts", true),

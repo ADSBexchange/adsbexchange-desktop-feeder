@@ -91,4 +91,25 @@ class FeedWatchdogTest {
         assertEquals(listOf(wake + 15 * min to Action.Alert(Problem.FEED_DOWN)),
             w.run(wake + 14 * min, wake + 15 * min, connected = false) { 500 })
     }
+
+    /**
+     * Reading another receiver over the network (Settings > Receiver): not reaching it for 15
+     * minutes is its own alert, ahead of the silence that follows from it.
+     */
+    @Test
+    fun alertsWhenTheOtherReceiverCantBeReachedFor15Minutes() {
+        val w = FeedWatchdog()
+        var t = 0L
+        val actions = ArrayList<Pair<Long, Action>>()
+        while (t <= 3 * 60 * min) {
+            w.tick(true, true, true, 500, t, sourceDown = true)?.let { actions += t to it }
+            t += step
+        }
+        assertEquals("one alert, at 15 minutes, and no silence alert after it",
+            listOf(15 * min to Action.Alert(Problem.SOURCE_DOWN)), actions)
+        assertEquals(Action.Clear, w.tick(true, true, true, 600, t, sourceDown = false))
+        assertTrue("a short drop isn't an alert", (1..20).mapNotNull { i ->
+            w.tick(true, true, true, 600L + i, t + i * step, sourceDown = i < 20)
+        }.isEmpty())
+    }
 }

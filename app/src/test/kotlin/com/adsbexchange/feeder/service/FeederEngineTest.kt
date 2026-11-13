@@ -1,5 +1,6 @@
 package com.adsbexchange.feeder.service
 
+import com.adsbexchange.feeder.data.ConnectFailure
 import com.adsbexchange.feeder.data.FeedState
 import com.adsbexchange.feeder.data.FeederPaths
 import com.adsbexchange.feeder.data.FeederSettings
@@ -192,6 +193,121 @@ class FeederEngineTest {
         } finally {
             server.destroyForcibly()
         }
+    }
+
+    /**
+     * Settings > Receiver's network source end to end: a second readsb.exe plays the Raspberry Pi,
+     * decoding the capture and serving its Beast output on 127.0.0.1. The engine's readsb reads it
+     * with no stick, decodes the same aircraft and feeds them on. When the "Pi" stops (the end of
+     * the capture), the engine's readsb carries on and says it can't reach it.
+     */
+    @Test
+    fun feedsWhatAnotherReceiverHears() {
+        val (pi, piPort) = startStandInPi()
+        try {
+            engine.start(FeederEngine.TestRun(null, location(), feedTo = "127.0.0.1,${sink.localPort}",
+                networkSource = "127.0.0.1,$piPort"))
+            val running = awaitStatus(20_000, "reading the other receiver") {
+                it.state == State.RUNNING && it.sourceState == FeedState.CONNECTED
+            }
+            assertEquals("127.0.0.1,$piPort", running.source)
+            awaitStatus(20_000, "feed connected") { it.feedState == FeedState.CONNECTED }
+            val log = paths.logFile.readText()
+            assertTrue("no stick", log.lines().last { "starting readsb" in it }.contains("--device-type none"))
+
+            val want = expected.getJSONArray("aircraft").let { a -> (0 until a.length()).map { a.getJSONObject(it).getString("hex") } }
+            var hexes = emptySet<String>()
+            val decoded = System.currentTimeMillis() + 40_000
+            while (System.currentTimeMillis() < decoded && !hexes.containsAll(want)) {
+                Thread.sleep(500)
+                hexes = runCatching {
+                    JSONObject(paths.aircraftJson.readText()).getJSONArray("aircraft").let { a ->
+                        (0 until a.length()).map { a.getJSONObject(it).getString("hex") }.toSet()
+                    }
+                }.getOrDefault(emptySet())
+            }
+            assertTrue("decoded $hexes, expected $want", hexes.containsAll(want))
+
+            assertTrue("the stand-in Pi reached the end of the capture", pi.waitFor(60, java.util.concurrent.TimeUnit.SECONDS))
+            val gone = awaitStatus(20_000, "the other receiver gone") { it.sourceState == FeedState.DISCONNECTED }
+            assertEquals("still running, and retrying", State.RUNNING, gone.state)
+            // Trying again, readsb finds nothing listening on the port: refused, not "no answer".
+            awaitStatus(30_000, "refused") { it.sourceFailure == ConnectFailure.REFUSED }
+            assertTrue("fed what the other receiver heard", received.size() > 1000)
+            val after = paths.logFile.readText()
+            assertTrue(after.contains("connected to the receiver at 127.0.0.1:$piPort"))
+            assertTrue(after.contains("can't reach the receiver at 127.0.0.1:$piPort: connection refused; readsb keeps trying"))
+        } finally {
+            pi.destroyForcibly()
+        }
+    }
+
+    /**
+     * MLAT with a network source: it needs the other receiver's own timestamps, passed through our
+     * readsb untouched. The MLAT client drops a message without one (BeastReader.wanted), so sync
+     * messages reaching the stand-in server (as in [mlatForwardsOnlyOurReadsb]) show they arrived.
+     * The capture has DF17 only, so there are syncs and no MLAT messages, either way; and it
+     * makes the client send a clock reset with a stick too, so that isn't checked.
+     */
+    @Test
+    fun mlatWorksWithANetworkSource() {
+        val javaExe = File(System.getProperty("java.home"), "bin/java.exe").path
+        val fakeMlat = File(testData!!.parentFile, "mlat-sim/FakeMlatServer.java")
+        val summary = File(tmp.root, "mlat-summary.json")
+        val mlatPort = ServerSocket(0, 1, loopback).use { it.localPort }
+        val hexes = expected.getJSONArray("aircraft").let { a -> (0 until a.length()).map { a.getJSONObject(it).getString("hex") } }
+        val server = ProcessBuilder(listOf(javaExe, fakeMlat.path, "$mlatPort", summary.path, "120") + hexes)
+            .redirectErrorStream(true).redirectOutput(File(tmp.root, "fake-mlat.log")).start()
+        var pi: Process? = null
+        try {
+            Thread.sleep(3_000) // single-file java compiles before it listens
+            val (p, piPort) = startStandInPi()
+            pi = p
+            engine.start(FeederEngine.TestRun(null, location(), feedTo = "127.0.0.1,${sink.localPort}",
+                mlatServer = "127.0.0.1" to mlatPort, networkSource = "127.0.0.1,$piPort"))
+            awaitStatus(20_000, "reading the other receiver") { it.sourceState == FeedState.CONNECTED }
+            assertTrue("the stand-in Pi reached the end of the capture", p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS))
+            // The engine carries on without the Pi; stopping it ends the MLAT connection and the stand-in's summary.
+            Thread.sleep(2_000)
+            engine.stop()
+            assertTrue("stand-in finished", server.waitFor(30, java.util.concurrent.TimeUnit.SECONDS))
+            val s = JSONObject(summary.readText())
+            assertTrue("MLAT input connected: $s", s.getBoolean("input_connected"))
+            assertTrue("MLAT forwarded the other receiver's aircraft: $s", s.getJSONArray("seen").length() > 0)
+            assertTrue("timestamped sync messages sent: $s", s.getInt("syncs") > 100)
+            assertFalse("our readsb was refused", paths.logFile.readText().contains("isn't this app's readsb"))
+        } finally {
+            pi?.destroyForcibly()
+            server.destroyForcibly()
+        }
+    }
+
+    /**
+     * A second readsb.exe playing a Raspberry Pi: it decodes the capture at real-time speed and
+     * serves its Beast output on 127.0.0.1, as dump1090-fa or readsb on a Pi serve port 30005.
+     * Returned once it's listening, since readsb waits a while before trying a connection again.
+     */
+    private fun startStandInPi(): Pair<Process, Int> {
+        val port = ServerSocket(0, 1, loopback).use { it.localPort }
+        val dir = tmp.newFolder("pi")
+        val pi = ProcessBuilder(exe!!.path, "--device-type", "ifile", "--ifile", iq.path, "--iformat", "UC8", "--throttle",
+            "--quiet", "--db-file", "none", "--net", "--net-bind-address", "127.0.0.1", "--net-bo-port", "$port",
+            "--net-ro-port", "0", "--net-ri-port", "0", "--net-bi-port", "0", "--net-sbs-port", "0")
+            .directory(dir).redirectErrorStream(true).redirectOutput(File(dir, "pi.log")).start()
+        val deadline = System.currentTimeMillis() + 10_000
+        while (runCatching { Socket(loopback, port).close() }.isFailure) {
+            if (System.currentTimeMillis() > deadline) {
+                pi.destroyForcibly()
+                throw AssertionError("the stand-in Pi isn't listening")
+            }
+            Thread.sleep(100)
+        }
+        return pi to port
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun aTestSourceMustBeLocal() {
+        FeederEngine.TestRun(null, location(), networkSource = "192.168.1.50,30005")
     }
 
     @Test(expected = IllegalArgumentException::class)
