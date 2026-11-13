@@ -27,8 +27,28 @@
              Manufacturer="ADS-B Exchange" Description="ADS-B Exchange Feeder $(var.Version)"
              Comments="Feeds ADS-B Exchange from an RTL-SDR stick" />
 
-    <MajorUpgrade AllowSameVersionUpgrades="yes"
+    <!-- An upgrade installs the new version over the old one, then removes what's left of the old
+         (Schedule="afterInstallExecute"). Up to 0.5.24 it removed the old version first. Windows
+         Installer couldn't delete a file of the old version that some program still had open, so
+         it queued "delete this path at the next restart"; most files keep their name from one
+         version to the next (52 of the 54 jars from 0.5.23 to 0.5.24), so the new version's file
+         was then at that path, and the restart deleted it: the app worked after the upgrade and
+         didn't start after the next restart. Now a file both versions have is never deleted: its
+         component is shared, with the same GUID in every version (heat's -ag derives it from the
+         file's path), so removing the old version only takes the files the new one doesn't have. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes" Schedule="afterInstallExecute"
                   DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <!-- The old version's files are still there when the new ones are copied, and Windows Installer
+         leaves one alone if it's the same (no version number, same hash) or has the same or a
+         higher version number (the launcher and the Java runtime's DLLs have one). That's what's
+         wanted: a file some program holds open is nearly always one that hasn't changed, and it's
+         skipped without a word. Forcing every file to be written instead (REINSTALLMODE=amus) was
+         tried: with one unchanged jar held open the installer sat at "Copying new files" for
+         2.5 minutes, then asked for a restart. So two things to keep in mind:
+         - Never ship an older Java runtime than the release before: its DLLs would be kept, with
+           the rest of the newer runtime replaced around them.
+         - A build with the same version number as the one installed (a test build) keeps the
+           installed launcher .exe, signed or not; everything else is replaced. -->
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <!-- An old per-user install (0.5.15 or earlier) for this account: its marker under HKCU. -->
