@@ -441,6 +441,88 @@ class FeederEngineSdrTest {
         }
     }
 
+    /** With a stand-in readsb (cmd.exe), starts feeding from a stick whose tuner readsb then names as an FC0012. */
+    private fun refuseAnFc0012(): FeederStatus {
+        engine.shutdown()
+        val cmd = File(System.getenv("SystemRoot"), "System32\\cmd.exe")
+        engine = FeederEngine(paths, findReadsb = { readsbLookups.incrementAndGet(); cmd }, sdrProbe = { scan },
+            installDriver = { SdrDriver.Outcome.FAILED }, conditions = power, powerPollMs = 500)
+        scan = SdrScan(listOf(tvTuner.copy(driver = "WinUSB", winusb = true)))
+        engine.start()
+        awaitStatus("running") { it.state == State.RUNNING }
+        paths.logFile.appendText("Found Fitipower FC0012 tuner\n")
+        return awaitStatus("stopped for the tuner") { it.state == State.STARTING && it.reason == Reason.UNSUPPORTED_TUNER }
+    }
+
+    /**
+     * Waiting with a stick whose tuner can't receive 1090 MHz, the status became something else's and
+     * stayed that way: the wait didn't publish it again. On battery and back on mains, it said
+     * "Paused: on battery" for good.
+     */
+    @Test
+    fun afterAPauseOnBatteryTheUnsupportedTunerIsShownAgain() {
+        refuseAnFc0012()
+        onBattery.set(true)
+        awaitStatus("paused on battery") { it.reason == Reason.ON_BATTERY }
+        onBattery.set(false)
+        val back = awaitStatus("the tuner again") { it.reason == Reason.UNSUPPORTED_TUNER }
+        assertEquals(State.STARTING, back.state)
+        assertEquals("Fitipower FC0012", back.tuner)
+        assertEquals("readsb wasn't started again", 1, readsbLookups.get())
+    }
+
+    /**
+     * And after reading a network receiver for a while: back on the same stick, readsb isn't
+     * started, and the status is the unsupported tuner, not the network run's "running".
+     */
+    @Test
+    fun backFromANetworkReceiverTheUnsupportedTunerIsShownAgain() {
+        refuseAnFc0012()
+        FeederSettings.update(paths) {
+            it.copy(source = ReceiverSource.NETWORK, networkHost = "127.0.0.1", networkPort = 30199)
+        }
+        val network = awaitStatus("reading the network receiver") { it.state == State.RUNNING && it.source != null }
+        assertEquals(null, network.tuner)
+        assertEquals(2, readsbLookups.get())
+
+        Thread.sleep(1_100) // a settings file newer than the one the engine read
+        FeederSettings.update(paths) { it.copy(source = ReceiverSource.USB) }
+        val back = awaitStatus("the tuner again") { it.reason == Reason.UNSUPPORTED_TUNER }
+        assertEquals(State.STARTING, back.state)
+        assertEquals("Fitipower FC0012", back.tuner)
+        assertEquals(null, back.source)
+        assertFalse(back.feeding)
+        Thread.sleep(4_000) // past the next stick checks
+        assertEquals("readsb wasn't started for the stick", 2, readsbLookups.get())
+        assertEquals(Reason.UNSUPPORTED_TUNER, engine.status.value.reason)
+    }
+
+    /** Settings > Alert me if feeding stops, off: no tray alert for the tuner either. Status still says it. */
+    @Test
+    fun noTunerAlertWithAlertsOff() {
+        FeederSettings.update(paths) { it.copy(feedAlerts = false) }
+        val events = CopyOnWriteArrayList<FeederEngine.Event>()
+        val scope = CoroutineScope(Dispatchers.Default)
+        try {
+            engine.shutdown()
+            val cmd = File(System.getenv("SystemRoot"), "System32\\cmd.exe")
+            engine = FeederEngine(paths, findReadsb = { readsbLookups.incrementAndGet(); cmd }, sdrProbe = { scan },
+                installDriver = { SdrDriver.Outcome.FAILED }, conditions = power)
+            scope.launch { engine.events.collect { events += it } }
+            Thread.sleep(300)
+            scan = SdrScan(listOf(tvTuner.copy(driver = "WinUSB", winusb = true)))
+            engine.start()
+            awaitStatus("running") { it.state == State.RUNNING }
+            paths.logFile.appendText("Found Fitipower FC0012 tuner\n")
+            val stopped = awaitStatus("stopped for the tuner") { it.reason == Reason.UNSUPPORTED_TUNER }
+            assertEquals("Fitipower FC0012", stopped.tuner)
+            Thread.sleep(500)
+            assertTrue("no alert: $events", events.isEmpty())
+        } finally {
+            scope.cancel()
+        }
+    }
+
     /** An FC0013 barely reaches 1090 MHz: feeding carries on, and Status warns (from [FeederStatus.tuner]). */
     @Test
     fun aTunerThatBarelyReaches1090KeepsFeeding() {

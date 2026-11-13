@@ -156,10 +156,11 @@ class FeederEngine(
     /** This run's tuner has been read from readsb's log; see [checkTuner]. */
     private var tunerChecked = false
     /**
-     * The sticks plugged in when readsb was stopped for a tuner that can't receive 1090 MHz: no
-     * new run until that changes (another stick, or it's unplugged) or the user clicks Start.
+     * The tuner that can't receive 1090 MHz, and the sticks plugged in when readsb was stopped for
+     * it: no new run until those change (another stick, or it's unplugged) or the user clicks Start.
      */
-    private var unsupportedSticks: List<SdrStick>? = null
+    private class RefusedStick(val tuner: String, val sticks: List<SdrStick>)
+    private var refusedStick: RefusedStick? = null
     private var settings: FeederSettings? = null
     private var settingsMtime = 0L
     private var lastPushedLocation: StationLocation? = null
@@ -235,7 +236,7 @@ class FeederEngine(
             restartTask?.cancel(false)
             restartTask = null
             failedStarts = 0
-            unsupportedSticks = null
+            refusedStick = null
             clearCrashLoop(announce = false)
             if (testRun == null) FeederSettings.update(paths) { it.copy(userStopped = false) }
             startRun(testRun)
@@ -382,10 +383,14 @@ class FeederEngine(
             // Reading another receiver: no stick to wait for.
             if (network == null) {
                 val scan = sdrProbe.scan()
-                unsupportedSticks?.let { refused ->
-                    // Still the stick whose tuner can't receive 1090 MHz: keep waiting, as Status says.
-                    if (scan != null && scan.sticks.isNotEmpty() && scan.sticks == refused) return scheduleStart(SDR_POLL_S * 1000)
-                    unsupportedSticks = null
+                refusedStick?.let { refused ->
+                    // Still the stick whose tuner can't receive 1090 MHz: keep waiting, and say so
+                    // again, as the status may be something else's by now (a pause on battery, or a
+                    // run that read another receiver over the network).
+                    if (scan != null && scan.sticks.isNotEmpty() && scan.sticks == refused.sticks) {
+                        return waitForAnotherStick(refused.tuner)
+                    }
+                    refusedStick = null
                 }
                 if (scan != null && !scan.ready) return waitForStick(scan)
                 stick = scan?.sticks?.firstOrNull { it.winusb }
@@ -648,18 +653,34 @@ class FeederEngine(
         log("the $tuner tuner can't receive 1090 MHz; readsb stopped until another stick is plugged in")
         readsb?.stop()
         teardown()
-        // Without the stick check there's no telling when the stick changes: wait for Start instead.
         val scan = sdrProbe.scan()
-        unsupportedSticks = scan?.sticks
+        if (scan == null) {
+            // Without the stick check there's no telling when the stick changes: wait for Start instead.
+            publish {
+                it.copy(
+                    state = State.STOPPED, reason = Reason.UNSUPPORTED_TUNER, tuner = tuner, feeding = false,
+                    feedState = FeedState.UNKNOWN, connectedSinceMs = null,
+                )
+            }
+        } else {
+            refusedStick = RefusedStick(tuner, scan.sticks)
+            waitForAnotherStick(tuner)
+        }
+        // As the other alerts, not with Settings > Alert me if feeding stops off; Status says it either way.
+        if (settings?.feedAlerts != false) _events.tryEmit(Event.UnsupportedTuner(tuner))
+        return true
+    }
+
+    /** The stick plugged in has a [tuner] that can't receive 1090 MHz: say so, and look again shortly. readsb isn't started. */
+    private fun waitForAnotherStick(tuner: String) {
         publish {
             it.copy(
-                state = if (scan == null) State.STOPPED else State.STARTING, reason = Reason.UNSUPPORTED_TUNER,
-                tuner = tuner, feeding = false, feedState = FeedState.UNKNOWN, connectedSinceMs = null,
+                state = State.STARTING, reason = Reason.UNSUPPORTED_TUNER, tuner = tuner, feeding = false,
+                feedState = FeedState.UNKNOWN, source = null, sourceState = FeedState.UNKNOWN, sourceFailure = null,
+                connectedSinceMs = null,
             )
         }
-        _events.tryEmit(Event.UnsupportedTuner(tuner))
-        if (scan != null) scheduleStart(SDR_POLL_S * 1000)
-        return true
+        scheduleStart(SDR_POLL_S * 1000)
     }
 
     /**
