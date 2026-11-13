@@ -60,6 +60,7 @@ import com.adsbexchange.feeder.data.ReceiverSource
 import com.adsbexchange.feeder.data.ReceiverStatus
 import com.adsbexchange.feeder.data.RestartBudget
 import com.adsbexchange.feeder.data.StationLocation
+import com.adsbexchange.feeder.data.Tuners
 import com.adsbexchange.feeder.data.TypedNumber
 import com.adsbexchange.feeder.data.altitudeNeedsCheck
 import com.adsbexchange.feeder.data.mlatAltitudeM
@@ -128,6 +129,13 @@ fun StatusScreen(
                         else "No aircraft heard for 2 hours or more. Check that the antenna is connected and the RTL-SDR " +
                         "is firmly plugged in."
                 })
+            }
+        }
+        // A tuner that barely reaches 1090 MHz: it runs, but hears little (one that can't, stops; see describe).
+        status.tuner?.takeIf { status.state == State.RUNNING && Tuners.poor(it) }?.let { t ->
+            SectionCard(null) {
+                WarningRow("This RTL-SDR's tuner, the $t, barely reaches 1090 MHz, the frequency aircraft transmit " +
+                    "on, so it hears far fewer aircraft than it could. ${Tuners.ADVICE}")
             }
         }
         if (settings.location == null) {
@@ -232,6 +240,7 @@ private fun describeState(s: FeederStatus): Headline = when (s.state) {
                 "${s.stickName ?: "RTL-SDR"}. The feeder needs Windows' WinUSB driver on it instead. " +
                 "Windows will ask for your permission once. Other programs that use the stick as a TV tuner won't work with it afterwards.",
             Brand.Warn)
+        Reason.UNSUPPORTED_TUNER -> unsupportedTuner(s, "Feeding starts by itself when you plug one in.")
         Reason.ON_BATTERY -> Headline("Paused: on battery",
             "Feeding pauses while this PC runs on its battery, and starts again by itself when it's plugged in. " +
                 "To keep feeding on battery, turn on Keep feeding on battery in Settings.", Brand.Warn)
@@ -245,9 +254,17 @@ private fun describeState(s: FeederStatus): Headline = when (s.state) {
         Reason.ENGINE_ERROR -> Headline("Stopped after an error",
             "Something unexpected stopped the feeder. Start tries again; the details are in the log.", Brand.Red)
         Reason.USER_STOPPED -> Headline("Stopped", "Not feeding until you start it again.", Brand.TextSecondary)
+        Reason.UNSUPPORTED_TUNER -> unsupportedTuner(s, "Plug one in, then click Start feeding.")
         else -> Headline("Stopped", null, Brand.TextSecondary)
     }
 }
+
+/** The stick's tuner can't tune to 1090 MHz, so feeding stopped (FeederEngine's checkTuner). */
+@Composable
+private fun unsupportedTuner(s: FeederStatus, then: String) = Headline("This RTL-SDR can't receive ADS-B",
+    "Its tuner, the ${s.tuner ?: "one it has"}, can't tune to 1090 MHz, the frequency aircraft transmit on, so it " +
+        "would hear nothing. ${Tuners.ADVICE} $then",
+    Brand.Red)
 
 /** Reading another receiver over the network, and it can't be read: why, as far as readsb could tell. */
 @Composable
