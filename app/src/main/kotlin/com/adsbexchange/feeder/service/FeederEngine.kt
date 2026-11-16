@@ -1,5 +1,6 @@
 package com.adsbexchange.feeder.service
 
+import com.adsbexchange.feeder.data.ConnectFailure
 import com.adsbexchange.feeder.data.FeedLogWatcher
 import com.adsbexchange.feeder.data.FeedState
 import com.adsbexchange.feeder.data.FeedWatchdog
@@ -14,9 +15,11 @@ import com.adsbexchange.feeder.data.HistorySamples
 import com.adsbexchange.feeder.data.HistoryStore
 import com.adsbexchange.feeder.data.MlatReadiness
 import com.adsbexchange.feeder.data.MlatStatus
+import com.adsbexchange.feeder.data.ReceiverSource
 import com.adsbexchange.feeder.data.StationLocation
 import com.adsbexchange.feeder.data.RestartBudget
 import com.adsbexchange.feeder.data.StatsStatus
+import com.adsbexchange.feeder.data.Tuners
 import com.adsbexchange.feeder.data.appendAppLog
 import com.adsbexchange.feeder.data.describeError
 import com.adsbexchange.feeder.data.mlatAltitudeM
@@ -57,6 +60,10 @@ import kotlin.concurrent.thread
  * Starting readsb without a stick would connect to ADS-B Exchange only to drop the connection a
  * second later, over and over.
  *
+ * Or readsb reads another receiver over the network (Settings > Receiver; [FeederSettings.networkSource])
+ * and there's no stick to wait for: readsb starts at once and keeps reconnecting to it by itself,
+ * and [FeederStatus.sourceState] says whether it's connected.
+ *
  * readsb exiting on its own (stick unplugged, crash) isn't the end: the engine starts it again
  * after a pause, until the user clicks Stop. Test runs ([TestRun]) aren't restarted.
  */
@@ -89,9 +96,12 @@ class FeederEngine(
      * Tests only: read a UC8 I/Q capture instead of the SDR, feed a local sink instead of ADS-B
      * Exchange, and use the capture's receiver position. Only 127.0.0.1 targets are accepted, so a
      * test can never reach the real ADS-B Exchange.
+     *
+     * Or, with [networkSource] ("127.0.0.1,port") instead of [inputFile], read another readsb's Beast
+     * output, as Settings > Receiver's network source does.
      */
     data class TestRun(
-        val inputFile: File,
+        val inputFile: File?,
         val location: StationLocation,
         val feedTo: String? = null,
         val mlatServer: Pair<String, Int>? = null,
@@ -99,8 +109,11 @@ class FeederEngine(
         /** Where to send stats uploads (see [StatsUploader]), as "http://127.0.0.1:port/..."; none if null. */
         val statsUrl: String? = null,
         val statsIntervalMs: Long = StatsUploader.INTERVAL_MS,
+        val networkSource: String? = null,
     ) {
         init {
+            require((inputFile == null) != (networkSource == null)) { "a capture or a network source, not both" }
+            require(networkSource == null || networkSource.startsWith("127.0.0.1,")) { "test source must be local" }
             require(feedTo == null || feedTo.startsWith("127.0.0.1,")) { "test feed must be local" }
             require(mlatServer == null || mlatServer.first == "127.0.0.1") { "test MLAT server must be local" }
             require(statsUrl == null || statsUrl.startsWith("http://127.0.0.1:")) { "test stats server must be local" }
@@ -140,12 +153,24 @@ class FeederEngine(
     /** See [autoSetUpDriver]: the automatic driver setup is tried once per app run. */
     private var autoDriverSetupTried = false
     private var ticks = 0
+    /** This run's tuner has been read from readsb's log; see [checkTuner]. */
+    private var tunerChecked = false
+    /**
+     * The tuner that can't receive 1090 MHz, and the sticks plugged in when readsb was stopped for
+     * it: no new run until those change (another stick, or it's unplugged) or the user clicks Start.
+     */
+    private class RefusedStick(val tuner: String, val sticks: List<SdrStick>)
+    private var refusedStick: RefusedStick? = null
     private var settings: FeederSettings? = null
     private var settingsMtime = 0L
     private var lastPushedLocation: StationLocation? = null
     /** The gain and bias tee this readsb run was started with; see [tick]. */
     private var runGain: String? = null
     private var runBiasTee = false
+    /** The other receiver this readsb run reads, as "host,port"; null for the stick. See [tick]. */
+    private var runSource: String? = null
+    /** Follows readsb.log for the connection to [runSource]. */
+    private var sourceWatcher: FeedLogWatcher? = null
     /** When MLAT's sync quality was last logged, and its counters then; see [logMlatSync]. */
     private var mlatLoggedAtMs = 0L
     private var mlatLoggedSyncs = 0L
@@ -179,6 +204,8 @@ class FeederEngine(
         data object StickUnplugged : Event
         /** readsb keeps stopping (the engine keeps restarting it); see [RestartBudget]. Also on [FeederStatus.sdrFailing]. */
         data object SdrFailing : Event
+        /** The stick's [tuner] can't receive 1090 MHz, so feeding stopped; see [checkTuner]. */
+        data class UnsupportedTuner(val tuner: String) : Event
     }
 
     private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 16)
@@ -209,6 +236,7 @@ class FeederEngine(
             restartTask?.cancel(false)
             restartTask = null
             failedStarts = 0
+            refusedStick = null
             clearCrashLoop(announce = false)
             if (testRun == null) FeederSettings.update(paths) { it.copy(userStopped = false) }
             startRun(testRun)
@@ -277,7 +305,7 @@ class FeederEngine(
         if (stayStopped) {
             return publish {
                 it.copy(state = State.STOPPED, reason = if (onError == OnError.STOP) Reason.USER_STOPPED else Reason.ENGINE_ERROR,
-                    feedState = FeedState.UNKNOWN, connectedSinceMs = null)
+                    feedState = FeedState.UNKNOWN, sourceState = FeedState.UNKNOWN, connectedSinceMs = null)
             }
         }
         val delayMs = restartDelayMs(failedStarts, false)
@@ -285,7 +313,7 @@ class FeederEngine(
         log("engine: starting again in ${delayMs / 1000} s")
         publish {
             it.copy(state = State.STARTING, reason = Reason.ENGINE_ERROR, feeding = false, feedState = FeedState.UNKNOWN,
-                connectedSinceMs = null)
+                sourceState = FeedState.UNKNOWN, connectedSinceMs = null)
         }
         scheduleStart(delayMs)
     }
@@ -343,6 +371,8 @@ class FeederEngine(
         val s = FeederSettings.load(paths).also { settings = it; settingsMtime = paths.settingsFile.lastModified() }
         runGain = s.gain
         runBiasTee = s.biasTee
+        val network = if (testRun != null) testRun.networkSource else s.networkSource()
+        runSource = network
         var stick: SdrStick? = null
         if (testRun == null) {
             if (!s.feedOnBattery && conditions.onBattery()) return waitForMains()
@@ -350,9 +380,21 @@ class FeederEngine(
                 log("on mains power again; feeding")
                 waitingFor = null
             }
-            val scan = sdrProbe.scan()
-            if (scan != null && !scan.ready) return waitForStick(scan)
-            stick = scan?.sticks?.firstOrNull { it.winusb }
+            // Reading another receiver: no stick to wait for.
+            if (network == null) {
+                val scan = sdrProbe.scan()
+                refusedStick?.let { refused ->
+                    // Still the stick whose tuner can't receive 1090 MHz: keep waiting, and say so
+                    // again, as the status may be something else's by now (a pause on battery, or a
+                    // run that read another receiver over the network).
+                    if (scan != null && scan.sticks.isNotEmpty() && scan.sticks == refused.sticks) {
+                        return waitForAnotherStick(refused.tuner)
+                    }
+                    refusedStick = null
+                }
+                if (scan != null && !scan.ready) return waitForStick(scan)
+                stick = scan?.sticks?.firstOrNull { it.winusb }
+            }
             waitingFor = null
         }
         val exe = findReadsb()
@@ -394,7 +436,7 @@ class FeederEngine(
         val beastPort = pickBeastPort()
         // readsb reads the feeder ID from here (--uuid-file); see FeederSettings.readsbArgs.
         if (feedTo != null) writeAtomically(paths.uuidFile, s.uuid)
-        val args = s.readsbArgs(paths, server.port, feedTo, beastPort, testRun?.inputFile)
+        val args = s.readsbArgs(paths, server.port, feedTo, beastPort, testRun?.inputFile, network)
         logStart = paths.logFile.length()
         log("starting readsb: ${args.joinToString(" ")}")
         val process = try {
@@ -410,13 +452,15 @@ class FeederEngine(
         // already listening, so readsb's first connection waits in the backlog.)
         server.start()
         feedWatcher = feedTo?.let { FeedLogWatcher(paths.logFile, it, logStart) }
+        sourceWatcher = network?.let { FeedLogWatcher(paths.logFile, it, logStart) }
         keepAwake.set(true)
         ticks = 0
+        tunerChecked = false
         publish {
             FeederStatus(
                 State.RUNNING, feeding = feedTo != null, feedTarget = feedTo,
                 startedMs = System.currentTimeMillis(), beastPort = beastPort, stickName = stick?.name,
-                sdrFailing = crashLoop,
+                source = network, sdrFailing = crashLoop,
             )
         }
         if (unpluggedAlerted) {
@@ -438,7 +482,8 @@ class FeederEngine(
         publish {
             it.copy(
                 state = State.STARTING, reason = reason, stickName = first?.name, stickDriver = first?.driver,
-                feeding = false, feedState = FeedState.UNKNOWN, connectedSinceMs = null,
+                feeding = false, feedState = FeedState.UNKNOWN, source = null, sourceState = FeedState.UNKNOWN,
+                connectedSinceMs = null,
             )
         }
         scheduleStart(SDR_POLL_S * 1000)
@@ -460,7 +505,7 @@ class FeederEngine(
         publish {
             it.copy(
                 state = State.STARTING, reason = Reason.ON_BATTERY, feeding = false, feedState = FeedState.UNKNOWN,
-                connectedSinceMs = null,
+                sourceState = FeedState.UNKNOWN, connectedSinceMs = null,
             )
         }
         scheduleStart(powerPollMs)
@@ -469,6 +514,7 @@ class FeederEngine(
     private fun tick() {
         val p = readsb ?: return
         if (!p.isAlive) return onReadsbExit(p.exitCode ?: -1)
+        if (test == null && runSource == null && !tunerChecked && ticks < TUNER_CHECK_TICKS && checkTuner()) return
         val visible = uiVisible
 
         val feedState = feedWatcher?.poll() ?: FeedState.UNKNOWN
@@ -484,6 +530,22 @@ class FeederEngine(
             }
             if (feedState == FeedState.CONNECTED) failedStarts = 0
         }
+        sourceWatcher?.let { w ->
+            val sourceState = w.poll()
+            val failure = w.failure
+            if (sourceState != st.sourceState || failure != st.sourceFailure) {
+                val at = runSource?.let(ReceiverSource::shown)
+                val why = when (failure) {
+                    ConnectFailure.REFUSED -> ": connection refused"
+                    ConnectFailure.NO_ANSWER -> ": no answer"
+                    ConnectFailure.UNKNOWN_HOST -> ": name not found"
+                    null -> ""
+                }
+                log(if (sourceState == FeedState.CONNECTED) "connected to the receiver at $at"
+                    else "can't reach the receiver at $at$why; readsb keeps trying")
+                publish { it.copy(sourceState = sourceState, sourceFailure = failure) }
+            }
+        }
 
         // Settings change only through the app, which writes the file; re-read when it does.
         val mtime = paths.settingsFile.lastModified()
@@ -498,10 +560,14 @@ class FeederEngine(
             teardown()
             return waitForMains()
         }
-        // readsb reads the gain and the bias tee only when it starts, so a change (Settings) means
-        // starting it again.
-        if (test == null && s.gain != runGain) return restartReadsb("gain changed to ${s.gain}")
-        if (test == null && s.biasTee != runBiasTee) {
+        // readsb reads its source, the gain and the bias tee only when it starts, so a change
+        // (Settings) means starting it again. The gain and the bias tee are the stick's.
+        if (test == null && s.networkSource() != runSource) {
+            return restartReadsb("receiver changed to " +
+                (s.networkSource()?.let { "the one at ${ReceiverSource.shown(it)}" } ?: "the USB stick"))
+        }
+        if (test == null && runSource == null && s.gain != runGain) return restartReadsb("gain changed to ${s.gain}")
+        if (test == null && runSource == null && s.biasTee != runBiasTee) {
             return restartReadsb("bias tee turned ${if (s.biasTee) "on" else "off"}")
         }
         if (test == null) {
@@ -521,16 +587,20 @@ class FeederEngine(
     }
 
     private fun onReadsbExit(code: Int) {
-        val noSdr = logSinceStart().contains("no supported devices found")
+        val network = runSource != null
+        val noSdr = !network && logSinceStart().contains("no supported devices found")
         log("readsb exited (code $code)${if (noSdr) ": no RTL-SDR found" else ""}")
         val wasTest = test != null
         teardown()
         val reason = if (noSdr) Reason.NO_SDR else Reason.READSB_EXITED
         if (wasTest) {
-            return publish { it.copy(state = State.STOPPED, reason = reason, exitCode = code, feedState = FeedState.UNKNOWN, connectedSinceMs = null) }
+            return publish {
+                it.copy(state = State.STOPPED, reason = reason, exitCode = code, feedState = FeedState.UNKNOWN,
+                    sourceState = FeedState.UNKNOWN, connectedSinceMs = null)
+            }
         }
         // Was the stick pulled out? Then say so now, and wait for it rather than restarting readsb.
-        val scan = sdrProbe.scan()
+        val scan = if (network) null else sdrProbe.scan()
         if (scan != null && scan.sticks.isEmpty()) {
             log("the RTL-SDR was unplugged")
             // Its own alert supersedes a crash loop; plugging it back in is a fresh start.
@@ -560,9 +630,57 @@ class FeederEngine(
         failedStarts++
         publish {
             it.copy(state = State.STARTING, reason = reason, exitCode = code, feedState = FeedState.UNKNOWN,
-                connectedSinceMs = null, sdrFailing = crashLoop)
+                sourceState = FeedState.UNKNOWN, connectedSinceMs = null, sdrFailing = crashLoop)
         }
         scheduleStart(delayMs)
+    }
+
+    /**
+     * librtlsdr names the stick's tuner when readsb opens it ("Found Fitipower FC0012 tuner"). readsb
+     * carries on with one that can't tune to 1090 MHz ([Tuners.cannotReceive]), connected to ADS-B
+     * Exchange and MLAT with nothing to send, and the app looked to be feeding (issue #30). So readsb
+     * is stopped, and the engine waits for another stick. A tuner that barely reaches 1090 MHz
+     * ([Tuners.poor]) is only published, for Status to warn about.
+     *
+     * @return true if readsb was stopped.
+     */
+    private fun checkTuner(): Boolean {
+        val tuner = Tuners.found(logSinceStart()) ?: return false
+        tunerChecked = true
+        log("tuner: $tuner")
+        publish { it.copy(tuner = tuner) }
+        if (!Tuners.cannotReceive(tuner)) return false
+        log("the $tuner tuner can't receive 1090 MHz; readsb stopped until another stick is plugged in")
+        readsb?.stop()
+        teardown()
+        val scan = sdrProbe.scan()
+        if (scan == null) {
+            // Without the stick check there's no telling when the stick changes: wait for Start instead.
+            publish {
+                it.copy(
+                    state = State.STOPPED, reason = Reason.UNSUPPORTED_TUNER, tuner = tuner, feeding = false,
+                    feedState = FeedState.UNKNOWN, connectedSinceMs = null,
+                )
+            }
+        } else {
+            refusedStick = RefusedStick(tuner, scan.sticks)
+            waitForAnotherStick(tuner)
+        }
+        // As the other alerts, not with Settings > Alert me if feeding stops off; Status says it either way.
+        if (settings?.feedAlerts != false) _events.tryEmit(Event.UnsupportedTuner(tuner))
+        return true
+    }
+
+    /** The stick plugged in has a [tuner] that can't receive 1090 MHz: say so, and look again shortly. readsb isn't started. */
+    private fun waitForAnotherStick(tuner: String) {
+        publish {
+            it.copy(
+                state = State.STARTING, reason = Reason.UNSUPPORTED_TUNER, tuner = tuner, feeding = false,
+                feedState = FeedState.UNKNOWN, source = null, sourceState = FeedState.UNKNOWN, sourceFailure = null,
+                connectedSinceMs = null,
+            )
+        }
+        scheduleStart(SDR_POLL_S * 1000)
     }
 
     /**
@@ -611,7 +729,10 @@ class FeederEngine(
             p.stop()
         }
         teardown()
-        publish { it.copy(state = State.STOPPED, reason = reason, exitCode = code ?: it.exitCode, feedState = FeedState.UNKNOWN, connectedSinceMs = null) }
+        publish {
+            it.copy(state = State.STOPPED, reason = reason, exitCode = code ?: it.exitCode, feedState = FeedState.UNKNOWN,
+                sourceState = FeedState.UNKNOWN, connectedSinceMs = null)
+        }
     }
 
     /**
@@ -637,6 +758,7 @@ class FeederEngine(
         step("closing the position server") { gpsd?.close() }
         gpsd = null
         feedWatcher = null
+        sourceWatcher = null
         readsb = null
         test = null
         step("letting the PC sleep again") { keepAwake.set(false) }
@@ -654,6 +776,7 @@ class FeederEngine(
         val action = if (!settings.feedAlerts) watchdog.clear() else watchdog.tick(
             running = true, feeding = st.feeding, feedConnected = st.feedState == FeedState.CONNECTED,
             messagesTotal = latestMessages, nowMs = System.currentTimeMillis(),
+            sourceDown = st.source != null && st.sourceState != FeedState.CONNECTED,
         )
         when (action) {
             is FeedWatchdog.Action.Alert -> {
@@ -860,6 +983,8 @@ class FeederEngine(
 
     companion object {
         private const val TICK_MS = 2_000L
+        /** How long to look for the tuner's name in readsb's log: it's there within a second of starting. */
+        private const val TUNER_CHECK_TICKS = 15
         private const val NO_SDR_RETRY_S = 10L
         /** How often to look for a stick (or its driver) while there is none. */
         private const val SDR_POLL_S = 3L

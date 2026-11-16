@@ -33,10 +33,18 @@ data class FeederStatus(
      * restarting it, until a run stays up; see [RestartBudget].
      */
     val sdrFailing: Boolean = false,
+    /** The other receiver this run reads, as "host,port" ([FeederSettings.networkSource]); null for the USB stick. */
+    val source: String? = null,
+    /** Whether readsb is connected to [source]; UNKNOWN until it says, and for the USB stick. */
+    val sourceState: FeedState = FeedState.UNKNOWN,
+    /** Why connecting to [source] failed, while [sourceState] is DISCONNECTED; null if readsb didn't say. */
+    val sourceFailure: ConnectFailure? = null,
     /** Loopback port of readsb's Beast output in this run. */
     val beastPort: Int? = null,
     /** The RTL-SDR stick found, by librtlsdr's name ("Generic RTL2832U OEM"); null if none or unknown. */
     val stickName: String? = null,
+    /** The stick's tuner as librtlsdr names it ("Fitipower FC0013"), once readsb has said; see [Tuners]. */
+    val tuner: String? = null,
     /** The driver Windows has bound to the stick when it isn't WinUSB (shown with [Reason.NEEDS_DRIVER]). */
     val stickDriver: String? = null,
     val driverSetup: DriverSetup = DriverSetup.IDLE,
@@ -64,6 +72,11 @@ data class FeederStatus(
         ON_BATTERY,
         /** Something unexpected went wrong in the engine; the run was ended and starts again after a pause. */
         ENGINE_ERROR,
+        /**
+         * The stick's [tuner] can't tune to 1090 MHz ([Tuners.cannotReceive]): readsb was stopped, and the
+         * engine waits for another stick (STARTING), or for Start when it can't see the sticks (STOPPED).
+         */
+        UNSUPPORTED_TUNER,
     }
 
     /** Installing WinUSB for the stick (rtlsdr-driver.exe, behind Windows' permission prompt). */

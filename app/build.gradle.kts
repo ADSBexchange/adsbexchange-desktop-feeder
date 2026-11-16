@@ -9,7 +9,7 @@ plugins {
 }
 
 // The app's version, in the MSI and the launcher.
-val appVersion = "0.5.24"
+val appVersion = "0.5.25"
 
 // The commit this build came from, shown under Settings > About and in the log so an installed
 // build can be matched to its source; "-dirty" if tracked files had uncommitted changes, "unknown"

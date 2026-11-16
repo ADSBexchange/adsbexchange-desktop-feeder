@@ -17,6 +17,8 @@ import com.adsbexchange.feeder.data.FeederStatus
 import com.adsbexchange.feeder.data.FeederStatus.State
 import com.adsbexchange.feeder.data.MLAT_ACCURACY_M
 import com.adsbexchange.feeder.data.MlatReadiness
+import com.adsbexchange.feeder.data.ConnectFailure
+import com.adsbexchange.feeder.data.ReceiverSource
 import com.adsbexchange.feeder.data.ReceiverStatus
 import com.adsbexchange.feeder.data.mlatAltitudeM
 import com.adsbexchange.feeder.data.mlatUser
@@ -115,6 +117,19 @@ fun LiveFeedCard(
             else -> Brand.Warn to "Connecting to ADS-B Exchange"
         }
         StatusLine(color, text)
+        // Reading another receiver over the network: whether that's connected too.
+        status.source?.let { ReceiverSource.shown(it) }?.let { at ->
+            when (status.sourceState) {
+                FeedState.CONNECTED -> StatusLine(Brand.Green, "Reading the receiver at $at")
+                FeedState.DISCONNECTED -> StatusLine(Brand.Red, when (status.sourceFailure) {
+                    ConnectFailure.REFUSED -> "The receiver at $at refused the connection; retrying"
+                    ConnectFailure.NO_ANSWER -> "No answer from the receiver at $at; retrying"
+                    ConnectFailure.UNKNOWN_HOST -> "Can't find the receiver at $at; retrying"
+                    null -> "Can't reach the receiver at $at; retrying"
+                })
+                else -> StatusLine(Brand.Warn, "Connecting to the receiver at $at")
+            }
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (status.feeding) {
