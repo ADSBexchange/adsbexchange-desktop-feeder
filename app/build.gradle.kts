@@ -99,11 +99,13 @@ compose.resources {
 // - C1 compiler only: the app is mostly idle, so C2's extra speed isn't worth its memory.
 // - Software rendering for the window: about 50 MB less than Direct3D for a mostly still status
 //   window, at much the same CPU, and no dependence on the PC's graphics driver.
+// - Base64 in plain Java rather than the JVM's assembly routines: the app decodes next to none,
+//   so there is no speed to give up.
 // Also used by runPreview, so the preview measures what ships. (0.5.6; see the "Desktop resources"
 // card on Status.)
 val appJvmArgs = listOf(
     "-XX:+UseSerialGC", "-Xms32m", "-Xmx256m", "-XX:MinHeapFreeRatio=10", "-XX:MaxHeapFreeRatio=30",
-    "-XX:TieredStopAtLevel=1", "-Dskiko.renderApi=SOFTWARE",
+    "-XX:TieredStopAtLevel=1", "-XX:-UseBASE64Intrinsics", "-Dskiko.renderApi=SOFTWARE",
 )
 
 compose.desktop {
